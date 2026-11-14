@@ -1,15 +1,14 @@
 """Ersatz für die Google- und OpenAI-Dienste. Nichts hier ruft das Netzwerk auf.
 
-Die Antworten sind echte SDK-Objekte (types.GenerateContentResponse, openai.types.Batch), damit der Code im Test
+Die Antworten sind echte SDK-Objekte (interactions.Interaction, openai.types.Batch), damit der Code im Test
 dieselben Datenformen sieht wie in der Praxis. Aufrufe werden aufgezeichnet, damit Tests prüfen können, was die App
 gesendet hat.
 """
 import json
-import time as real_time
 from pathlib import Path
 from types import SimpleNamespace
 
-from google.genai import interactions, types
+from google.genai import interactions
 from openai.types import Batch, FileObject
 
 
@@ -19,18 +18,6 @@ class ApiError(Exception):
     def __init__(self, code, message="Fehler"):
         super().__init__(f"{code} {message}")
         self.code = code
-
-
-def make_response(text="Antwort", finish="STOP", prompt_tokens=100, cached=0, thoughts=10, out=5,
-                  model="gemini-4-carbon", empty=False):
-    """Echtes SDK-Antwortobjekt. empty=True liefert eine Antwort ohne Kandidaten (z. B. blockiert)."""
-    candidates = None if empty else [types.Candidate(
-        content=types.Content(role="model", parts=[types.Part(text=text)]), finish_reason=finish)]
-    return types.GenerateContentResponse(
-        candidates=candidates, model_version=model,
-        usage_metadata=types.GenerateContentResponseUsageMetadata(
-            prompt_token_count=prompt_tokens, cached_content_token_count=cached,
-            candidates_token_count=out, thoughts_token_count=thoughts))
 
 
 class InteractionsError(Exception):
@@ -59,12 +46,6 @@ def make_interaction(text="Antwort", *, status="completed", interaction_id="v1_f
     if errors:
         payload["errors"] = errors
     return interactions.Interaction.model_validate(payload)
-
-
-def shape(contents):
-    """Anfrageinhalt als einfache Tupel [(rolle, [teile])]. PDFs erscheinen als 'PDF:<id>'."""
-    return [(c.role, ["PDF:" + p.file_data.file_uri.rsplit("/", 1)[1] if p.file_data else p.text for p in c.parts])
-            for c in contents]
 
 
 def _state(name):
@@ -129,33 +110,6 @@ class _Batches:
         self.p.cancelled.append(name)
 
 
-class _Models:
-    def __init__(self, parent):
-        self.p = parent
-
-    def generate_content(self, model, contents, config):
-        p = self.p
-        n = len(p.calls)
-        p.calls.append({"model": model, "contents": shape(contents), "raw": list(contents), "config": config})
-        if p.on_call:
-            p.on_call(n)
-        if p.delay:
-            real_time.sleep(p.delay)
-        item = p.script[n] if n < len(p.script) else "ok"
-        if isinstance(item, Exception):
-            raise item
-        if item == "empty":
-            resp = make_response(empty=True)
-        elif isinstance(item, types.GenerateContentResponse):
-            resp = item
-        elif isinstance(item, dict):
-            resp = make_response(**item)
-        else:
-            resp = make_response(text=f"Antwort {n + 1}")
-        p.responses.append(resp)
-        return resp
-
-
 class _Interactions:
     """Interactions API (Hintergrund-Modus): create legt eine laufende Interaktion an, get liefert je nach
     interaction_results den Stand (Reihenfolge der Anlage), cancel notiert nur."""
@@ -197,35 +151,26 @@ class _Interactions:
 class FakeGemini:
     """Ersatz für google.genai.Client.
 
-    script: je Aufruf von generate_content ein Eintrag: "ok", "empty", eine Exception (wird ausgelöst),
-            ein dict (Argumente für make_response) oder ein fertiges Antwortobjekt. Danach immer "ok".
-    delay: Wartezeit in Sekunden pro generate_content (für Tests mit Abbruch).
     batch_state / get_error: Zustand bzw. Fehler von batches.get. create_error: Fehler von batches.create.
     batch_cached: Cache-Token in Batch-Ergebnissen.
     upload_state / get_states: Dateizustände der Files API (z. B. "PROCESSING", Exception für „abgelaufen“).
-    on_call: Funktion f(index), die zu Beginn jedes generate_content-Aufrufs läuft.
     interaction_results: je Interaktion (Reihenfolge der Anlage) die Argumente für make_interaction, mit denen
             interactions.get antwortet (z. B. {"status": "in_progress"}), oder eine Exception. Fehlt ein Eintrag, ist
             die Interaktion fertig. interaction_create_errors: {Nummer des create-Aufrufs ab 0: Exception}.
             interaction_cancel_error: Fehler von interactions.cancel.
     """
 
-    def __init__(self, script=None, *, delay=0.0, batch_state="JOB_STATE_SUCCEEDED", get_error=None,
-                 batch_cached=0, batch_text=None, upload_state=None, get_states=None, on_call=None,
-                 create_error=None, interaction_results=None, interaction_create_errors=None,
-                 interaction_cancel_error=None):
-        self.script = list(script or [])
-        self.delay = delay
+    def __init__(self, *, batch_state="JOB_STATE_SUCCEEDED", get_error=None, batch_cached=0, batch_text=None,
+                 upload_state=None, get_states=None, create_error=None, interaction_results=None,
+                 interaction_create_errors=None, interaction_cancel_error=None):
         self.batch_state = batch_state
         self.get_error = get_error
         self.batch_cached = batch_cached
         self.batch_text = batch_text
         self.upload_state = upload_state
         self.get_states = list(get_states or [])
-        self.on_call = on_call
         self.create_error = create_error
         self.client_kwargs = []  # Argumente der Client-Erzeugung (z. B. api_key)
-        self.calls, self.responses = [], []
         self.uploads, self.jsonl_uploads, self.jsonl_configs = [], [], []
         self.batch_requests, self.created_batches, self.cancelled = [], [], []
         self.get_calls = 0
@@ -235,7 +180,7 @@ class FakeGemini:
         self.interaction_create_calls = 0
         self.interaction_requests, self.interaction_ids = [], []
         self.interaction_gets, self.cancelled_interactions = [], []
-        self.files, self.batches, self.models = _Files(self), _Batches(self), _Models(self)
+        self.files, self.batches = _Files(self), _Batches(self)
         self.interactions = _Interactions(self)
 
 

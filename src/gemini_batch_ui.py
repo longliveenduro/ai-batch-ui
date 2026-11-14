@@ -1,12 +1,10 @@
-"""Lokale Batch- und Synchron-UI für Gemini 4 Carbon und OpenAI (Streamlit).
+"""Lokale Batch-UI für Gemini 4 Carbon und OpenAI (Streamlit).
 
 Start:    pip install -r requirements.txt && streamlit run src/gemini_batch_ui.py   (im Projektordner)
 API-Key:  Umgebungsvariablen GEMINI_API_KEY und OPENAI_API_KEY oder Seitenleiste.
-Anbieter: Gemini (Batch, Synchron und Hintergrund) oder OpenAI (nur Batch, Responses-Endpunkt), gewählt in der Seitenleiste.
-Modi:     Batch (asynchron, 50 % Rabatt), Synchron (nur Gemini: nacheinander, impliziter Cache über alle Prompts,
-          optional in Gesprächen: je N Prompts bilden einen gemeinsamen Kontext, das nächste Gespräch beginnt neu) oder
-          Hintergrund (nur Gemini: Interactions API mit background=true, Long Decode bis 1.048.576 Ausgabe-Token,
-          läuft bei Google und braucht die App nicht, Standardpreis).
+Anbieter: Gemini (Batch und Hintergrund) oder OpenAI (nur Batch, Responses-Endpunkt), gewählt in der Seitenleiste.
+Modi:     Batch (asynchron, 50 % Rabatt) oder Hintergrund (nur Gemini: Interactions API mit background=true, Long Decode
+          bis 1.048.576 Ausgabe-Token, läuft bei Google und braucht die App nicht, Standardpreis).
 Ordner:   conf/ (Zugangsdaten, geheim: credentials.json, token.json) und data/ (batch_jobs.json = Verlauf und
           Ergebnisse, pdf_files.json und openai_files.json = hochgeladene PDFs, requests_*.jsonl = gesendete
           Batch-Anfragen).
@@ -26,16 +24,15 @@ import streamlit as st
 
 from gbui.background import start_background
 from gbui.config import (BATCH_MAX_OUT, BG_DEFAULT_OUT, BG_MAX_OUT, DEFAULT_MODEL, DEFAULT_OPENAI_MODEL, DONE, FORM_KEYS,
-                         HINT, MAX_POLL_ERRORS, MODE_BATCH, MODE_BG, MODE_SYNC, OPENAI_EFFORTS, OPENAI_MAX_OUT,
-                         POLL_SECONDS, PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDERS, SEPARATOR, SYNC_MAX_OUT, TABS,
-                         TALK_NEW, THINK_LEVELS, prepare_folders)
+                         HINT, MAX_POLL_ERRORS, MODE_BATCH, MODE_BG, OPENAI_EFFORTS, OPENAI_MAX_OUT, POLL_SECONDS,
+                         PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDERS, SEPARATOR, TABS, TALK_NEW, THINK_LEVELS,
+                         prepare_folders)
 from gbui.drive import drive_fetch, drive_id, drive_service
 from gbui.forms import delete_entry, entry_label, reuse_inputs
 from gbui.gemini import start_batch, upload_pdf
 from gbui.history import load_jobs, mutate_jobs, runtime
 from gbui.openai_batch import start_openai_batch, upload_pdf_openai
 from gbui.providers import batch_info, entry_mode, entry_provider, make_client
-from gbui.sync import start_sync, sync_view
 from gbui.talk import entry_group, parse_conversation
 from gbui.views import job_panel
 
@@ -90,10 +87,10 @@ with tab_new:
     if provider == PROVIDER_OPENAI:
         mode = MODE_BATCH
         st.caption("Mit OpenAI läuft nur der Batch-Modus (50 % Rabatt, Ergebnis innerhalb von 24 Stunden). "
-                   "Der synchrone Modus ist Gemini vorbehalten.")
+                   "Der Modus „Hintergrund“ ist Gemini vorbehalten.")
     else:
-        mode = st.radio("Modus", [MODE_BATCH, MODE_SYNC, MODE_BG], horizontal=True, key="mode")
-    sync, bg = mode == MODE_SYNC, mode == MODE_BG
+        mode = st.radio("Modus", [MODE_BATCH, MODE_BG], horizontal=True, key="mode")
+    bg = mode == MODE_BG
     uploads = st.file_uploader("PDF-Dateien (mehrere möglich)", type="pdf", accept_multiple_files=True)
     with st.container(border=True):
         st.markdown("**PDFs aus Google Drive hinzufügen** (optional)")
@@ -130,14 +127,6 @@ with tab_new:
     if unfinished:
         st.warning(f"Unter „{TALK_NEW}“ fehlt noch dein neuer Prompt (Prompt {', '.join(map(str, unfinished))}). "
                    "Der Start ist gesperrt, bis dort Text steht.")
-    group = 1
-    if sync:
-        gcol, _ = st.columns([1, 3])
-        group = int(gcol.number_input(
-            "Prompts pro Gespräch", min_value=1, max_value=50, step=1, key="group",
-            help="1: Jeder Prompt läuft für sich. 2: Je zwei Prompts bilden ein Gespräch (der zweite sieht den ersten "
-                 "und dessen Antwort), die nächsten zwei ein neues Gespräch usw. Die PDFs gehen in jedem Gespräch mit "
-                 "dem ersten Prompt raus."))
     c1, c2, c3 = st.columns(3)
     if provider == PROVIDER_OPENAI:
         st.session_state.setdefault("effort", "Standard")
@@ -155,12 +144,6 @@ with tab_new:
                                   key="max_openai",
                                   help="max_output_tokens. Denk-Token zählen zum Limit. Das Maximum hängt vom "
                                        "Modell ab (bei den aktuellen Modellen bis 128.000).")
-    elif sync:
-        st.session_state.setdefault("max_sync", min(65536, SYNC_MAX_OUT))
-        max_out = c2.number_input("Max. Ausgabe-Token", min_value=256, max_value=SYNC_MAX_OUT, step=1024,
-                                  key="max_sync",
-                                  help="Über 32768 setzt das SDK automatisch Long Decode ein "
-                                       "(mehrere Teilanfragen, eine zusammengesetzte Antwort).")
     elif bg:
         st.session_state.setdefault("max_bg", BG_DEFAULT_OUT)
         max_out = c2.number_input("Max. Ausgabe-Token", min_value=256, max_value=BG_MAX_OUT, step=1024, key="max_bg",
@@ -172,27 +155,9 @@ with tab_new:
         max_out = c2.number_input("Max. Ausgabe-Token", min_value=256, max_value=BATCH_MAX_OUT, step=1024, key="max_batch",
                                   help="Im Batch-Betrieb begrenzt die API die Ausgabe auf 32768 Token. Mehr geht im "
                                        "Modus „Hintergrund“ (Long Decode).")
-    kind = "openai" if provider == PROVIDER_OPENAI else "sync" if sync else "background" if bg else "batch"
+    kind = "openai" if provider == PROVIDER_OPENAI else "background" if bg else "batch"
     label = c3.text_input("Name", f"{kind}-{datetime.now():%Y%m%d-%H%M}", key="label_" + kind)
-    talk_info = ""
-    if sync and group > 1 and prompts:
-        n_conv, rest = -(-len(prompts) // group), len(prompts) % group
-        if n_conv == 1:
-            split = f"Alle {len(prompts)} Prompts bilden ein Gespräch"
-        else:
-            split = f"Sie bilden {n_conv} Gespräche mit je {group} Prompts" + (f" (das letzte mit {rest})" if rest else "")
-        talk_info = (f" {split}. Jedes Gespräch beginnt mit den PDFs, innerhalb eines Gesprächs wird bei jedem Prompt "
-                     "der ganze Verlauf erneut gesendet. Sein Anfang (PDFs und erster Prompt) kann gecacht werden, "
-                     "neue Prompts und Antworten werden normal berechnet.")
-    if sync:
-        st.caption(
-            f"{len(prompts)} Prompt(s) erkannt. Die Prompts laufen nacheinander im Hintergrund, auch wenn du den Tab "
-            "wechselst. Die erste Anfrage füllt den impliziten Cache (nur implizit möglich, ab 4.096 Token, ohne "
-            "Rabattgarantie), die folgenden können davon profitieren. Die PDFs stehen in jeder Anfrage an erster Stelle. "
-            "Es gilt der Standardpreis statt des Batch-Rabatts. Cache-Treffer siehst du unter „Jobs und Ergebnisse“."
-            + talk_info
-        )
-    elif bg:
+    if bg:
         st.caption(
             f"{len(prompts)} Prompt(s) erkannt. Jeder Prompt läuft als Hintergrund-Interaktion bei Google (Interactions "
             "API, background=true), alle gleichzeitig. Long Decode setzt die Antwort über 65.536 Token hinaus fort "
@@ -215,7 +180,7 @@ with tab_new:
             "Stelle, damit der Prefix identisch ist. Treffer siehst du unter „Jobs und Ergebnisse“."
         )
 
-    if st.button("Synchron starten" if sync else "Im Hintergrund starten" if bg else "Batch starten", type="primary",
+    if st.button("Im Hintergrund starten" if bg else "Batch starten", type="primary",
                  disabled=not prompts or bool(unfinished)):
         try:
             with st.status("Bereite Anfragen vor …" + HINT) as status:
@@ -234,9 +199,7 @@ with tab_new:
                     status.update(label=f"Lade PDF {k} von {len(unique)} zu {provider} hoch …" + HINT)
                     pdfs.append((upload_pdf_openai if provider == PROVIDER_OPENAI else upload_pdf)(client, fname, data))
                 status.update(label="Starte …" + HINT)
-                if sync:
-                    entry = start_sync(client, rt, model, pdfs, names, prompts, system.strip(), think, max_out, label, group)
-                elif bg:
+                if bg:
                     entry = start_background(client, rt, model, pdfs, names, prompts, system.strip(), think, max_out, label)
                 elif provider == PROVIDER_OPENAI:
                     batch_id, keyed = start_openai_batch(client, model, [f.id for f in pdfs], prompts, system.strip(),
@@ -254,10 +217,7 @@ with tab_new:
                     mutate_jobs(rt.lock, lambda jobs: jobs.insert(0, entry))
                 status.update(label="Gestartet", state="complete")
             st.session_state["sel"] = entry_label(entry)  # der neue Eintrag ist im Jobs-Tab vorausgewählt
-            if sync:
-                st.success(f"{entry['name']} läuft im Hintergrund. Fortschritt und Ergebnisse siehst du im Tab "
-                           "„Jobs und Ergebnisse“.")
-            elif bg:
+            if bg:
                 st.success(f"{entry['name']} läuft bei Google. Im Tab „Jobs und Ergebnisse“ wird der Stand alle "
                            f"{POLL_SECONDS} Sekunden geprüft, die App muss dafür nicht durchgehend laufen.")
             else:
@@ -275,16 +235,15 @@ with tab_jobs:
         if st.session_state.get("sel") not in opts:
             st.session_state.pop("sel", None)
         j = opts[st.selectbox("Eintrag", list(opts), key="sel")]
-        is_sync = j.get("mode") == "sync"
-        grp, entry_prov = entry_group(j), entry_provider(j)
-        kind_txt = ((f"synchron, {grp} Prompts pro Gespräch" if grp > 1 else "synchron") if is_sync
-                    else "Hintergrund (Long Decode)" if entry_mode(j) == "background"
+        mode_j, grp, entry_prov = entry_mode(j), entry_group(j), entry_provider(j)
+        kind_txt = ((f"synchron, {grp} Prompts pro Gespräch" if grp > 1 else "synchron") if mode_j == "sync"
+                    else "Hintergrund (Long Decode)" if mode_j == "background"
                     else "Batch (OpenAI)" if entry_prov == PROVIDER_OPENAI else "Batch")
         st.caption(f"{j['name']}, {kind_txt}, gesendet: Modell {j['model']}, "
                    f"Denktiefe {j.get('think', 'unbekannt')}, max. {j.get('max_out', '?')} Ausgabe-Token, "
                    f"PDF: {j['pdf'] or 'keins'}, {len(j['prompts'])} Prompt(s)")
-        if is_sync:
-            running = sync_view(rt, j["name"])[1] == "RUNNING"
+        if mode_j == "sync":
+            running = False  # ältere synchrone Einträge: nichts läuft mehr, nichts ist abzufragen
         else:
             info = batch_info(j)
             failed = st.session_state.get("errn:" + j["name"], 0) >= MAX_POLL_ERRORS
@@ -297,5 +256,5 @@ with tab_jobs:
                      "Beim Anbieter bleibt alles unverändert.")
             st.button("Ja, endgültig löschen", on_click=delete_entry, args=(j["name"],), key="del:" + j["name"])
         job_client = client if entry_prov == provider else client_for(entry_prov)  # jeder Eintrag mit seinem Anbieter
-        polling = on_jobs_tab and running and (is_sync or job_client is not None)
-        st.fragment(run_every=POLL_SECONDS if polling else None)(job_panel)(job_client, rt, j, polling)
+        polling = on_jobs_tab and running and job_client is not None
+        st.fragment(run_every=POLL_SECONDS if polling else None)(job_panel)(job_client, j, polling)

@@ -23,7 +23,6 @@ def result_line(key="prompt-1", text="Hallo", finish="STOP", usage=None, parts=N
 
 def test_ui_texts_used_by_tests_match_the_app(app):
     assert app.MODE_BATCH == helpers.MODE_BATCH
-    assert app.MODE_SYNC == helpers.MODE_SYNC
     assert app.MODE_BG == helpers.MODE_BG
     assert app.TABS == [helpers.TAB_NEW, helpers.TAB_JOBS]
 
@@ -288,33 +287,12 @@ def test_start_batch_keeps_umlauts_readable_in_the_file(app, home):
     assert "Götzen-Dämmerung" in fake.jsonl_uploads[0].read_text("utf-8")
 
 
-# ---------- Wiederholungen ----------
-def test_ask_retries_transient_errors_with_growing_pauses(app, fake_time):
-    fake = FakeGemini([ApiError(503), ApiError(429), "ok"])
-    resp = app.ask(fake, "m", [], None)
-    assert resp.candidates[0].content.parts[0].text == "Antwort 3"
-    assert fake_time.sleeps == [10, 20] and len(fake.calls) == 3
-
-
-def test_ask_does_not_retry_client_errors(app, fake_time):
-    fake = FakeGemini([ApiError(400)])
-    with pytest.raises(ApiError):
-        app.ask(fake, "m", [], None)
-    assert fake_time.sleeps == [] and len(fake.calls) == 1
-
-
-def test_ask_gives_up_after_three_attempts(app, fake_time):
-    fake = FakeGemini([ApiError(503)] * 3)
-    with pytest.raises(ApiError):
-        app.ask(fake, "m", [], None)
-    assert fake_time.sleeps == [10, 20] and len(fake.calls) == 3
-
-
 # ---------- Gesprächsverlauf als Text ----------
 TURNS = [("Frage eins", "Antwort eins"), ("Frage zwei", "Antwort zwei")]
 
 
 def talk_entry(count, group=1, mode="sync", **extra):
+    """Eintrag mit count Prompts. Gespräche über mehrere Prompts (group > 1) gab es nur im früheren synchronen Modus."""
     prompts = {f"prompt-{i}": f"P{i}" for i in range(1, count + 1)}
     return {"name": "e", "mode": mode, "prompts": prompts, "group": group, **extra}
 

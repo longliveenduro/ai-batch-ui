@@ -282,11 +282,10 @@ def test_defaults_in_background_mode(use_fake):
     use_fake()
     at = new_app()
     at.run()
-    assert at.radio(key="mode").options == [MODE_BATCH, "Synchron (nacheinander, Cache-Treffer möglich)", MODE_BG]
+    assert at.radio(key="mode").options == [MODE_BATCH, MODE_BG]
     background_mode(at)
     assert not at.exception
     assert at.number_input(key="max_bg").value == 262144 and at.number_input(key="max_bg").max == 1_048_576
-    assert not [n for n in at.number_input if n.key == "group"]  # Gespräche gibt es nur synchron
     assert button(at, "Im Hintergrund starten").disabled  # ohne Prompts
     assert any("Hintergrund-Interaktion" in c and "Standardpreis" in c for c in captions(at))
     assert at.text_input(key="label_background").value.startswith("background-")

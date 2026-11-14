@@ -120,5 +120,5 @@ def fake_time(app, monkeypatch):
 
 @pytest.fixture
 def rt():
-    """Ersatz für runtime(): Sperre, Threads, Abbruchwünsche."""
-    return SimpleNamespace(lock=threading.Lock(), threads={}, cancel=set())
+    """Ersatz für runtime(): die Sperre für den Verlauf."""
+    return SimpleNamespace(lock=threading.Lock())

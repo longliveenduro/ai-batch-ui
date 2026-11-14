@@ -6,7 +6,6 @@ import streamlit as st
 from .config import BATCH_MAX_OUT, DONE, MAX_POLL_ERRORS, POLL_SECONDS, PROVIDER_GEMINI, TALK_NEW
 from .forms import continue_conversation
 from .providers import batch_info, cancel_batch, entry_mode, entry_provider, refresh
-from .sync import sync_view
 from .talk import conversation_text, entry_group, history_turns, parse_conversation, short_prompt
 
 
@@ -97,22 +96,12 @@ def show_rows(j, rows):
             talk_tools(j, rows, r)
 
 
-def sync_panel(rt, name, polling):
-    j, state = sync_view(rt, name)
-    if j is None:
-        st.warning("Eintrag nicht gefunden.")
-        return
-    if polling and state != "RUNNING":
-        st.rerun()  # Lauf beendet: ein kompletter Rerun beendet die automatische Prüfung
+def legacy_sync_panel(j):
+    """Älterer synchroner Eintrag: Den Modus gibt es nicht mehr, die gesicherten Zeilen bleiben lesbar. Ein Lauf, der in
+    der Datei noch auf RUNNING steht, wurde mit der App beendet (kein Thread lebt mehr): Er gilt als unterbrochen."""
+    state = "INTERRUPTED" if j.get("state", "RUNNING") == "RUNNING" else j["state"]
     rows, total = j.get("rows", []), len(j["prompts"])
-    if state == "RUNNING":
-        if st.button("Lauf abbrechen", key="stop:" + name):
-            rt.cancel.add(name)
-            st.warning("Abbruch angefordert. Die laufende Anfrage wird noch zu Ende geführt.")
-        if polling:
-            st.caption(f"Automatische Prüfung alle {POLL_SECONDS} Sekunden, zuletzt um {datetime.now():%H:%M:%S}.")
     texts = {
-        "RUNNING": "läuft",
         "DONE": "fertig",
         "CANCELLED": "abgebrochen",
         "FAILED": "fehlgeschlagen",
@@ -124,13 +113,13 @@ def sync_panel(rt, name, polling):
     show_rows(j, rows)
 
 
-def job_panel(client, rt, j, polling):
+def job_panel(client, j, polling):
     """Status und Ergebnisse. Mit polling=True prüft das Fragment alle POLL_SECONDS Sekunden neu."""
     if st.toggle("Gesendete Anfrage im Detail", key="detail:" + j["name"],
                  help="PDFs, Systemanweisung und jeden Prompt im Wortlaut, auch solange noch keine Ergebnisse da sind."):
         request_details(j)
-    if j.get("mode") == "sync":
-        return sync_panel(rt, j["name"], polling)
+    if entry_mode(j) == "sync":
+        return legacy_sync_panel(j)
     name = j["name"]
     errn_key, err_key = f"errn:{name}", f"err:{name}"
     background = entry_mode(j) == "background"  # läuft bei Google, wird wie ein Batch abgefragt

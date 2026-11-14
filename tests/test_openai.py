@@ -327,8 +327,8 @@ def test_openai_shows_its_own_defaults_and_no_mode_switch(use_openai):
         "Standard", "none", "minimal", "low", "medium", "high", "xhigh", "max"]
     assert at.number_input(key="max_openai").value == 32768 and at.number_input(key="max_openai").max == 128000
     assert not [s for s in at.selectbox if s.key == "think"]
-    assert any("nur der Batch-Modus" in c for c in captions(at))
-    assert button(at, "Batch starten").disabled and not [b for b in at.button if b.label == "Synchron starten"]
+    assert any("nur der Batch-Modus" in c and "„Hintergrund“ ist Gemini vorbehalten" in c for c in captions(at))
+    assert button(at, "Batch starten").disabled and not [b for b in at.button if b.label == "Im Hintergrund starten"]
     assert at.text_input(key="label_openai").value.startswith("openai-")
 
 
@@ -473,24 +473,22 @@ def test_each_provider_keeps_its_own_settings_when_switching_back_and_forth(use_
 
 
 @ui
-def test_the_synchronous_settings_survive_a_visit_to_the_other_provider(use_gemini, use_openai):
+def test_the_background_settings_survive_a_visit_to_the_other_provider(use_gemini, use_openai):
     use_gemini()
     use_openai()
     at = new_app()
     at.run()
-    at.radio(key="mode").set_value(helpers.MODE_SYNC)
+    at.radio(key="mode").set_value(helpers.MODE_BG)
     at.run()
-    at.number_input(key="group").set_value(3)
-    at.number_input(key="max_sync").set_value(8192)
+    at.number_input(key="max_bg").set_value(8192)
     at.run()
     at.radio(key="provider").set_value(PROVIDER_OPENAI)
     at.run()
     at.radio(key="provider").set_value(PROVIDER_GEMINI)
     at.run()
     assert not at.exception
-    sent_to_browser(at.radio(key="mode"), helpers.MODE_SYNC)
-    sent_to_browser(at.number_input(key="group"), 3)
-    sent_to_browser(at.number_input(key="max_sync"), 8192)
+    sent_to_browser(at.radio(key="mode"), helpers.MODE_BG)
+    sent_to_browser(at.number_input(key="max_bg"), 8192)
 
 
 def test_every_form_widget_with_a_key_is_kept_alive_between_runs(app):
