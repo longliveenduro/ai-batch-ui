@@ -5,7 +5,8 @@ from .config import TALK_BEGIN, TALK_END, TALK_INTRO, TALK_MARK, TALK_MINE, TALK
 
 
 def entry_group(j):
-    """Prompts pro Gespräch eines Eintrags (Batch: 1). Ältere synchrone Einträge kennen nur „chat“ (alles ein Gespräch)."""
+    """Prompts pro Gespräch eines Eintrags. Nur ältere synchrone Einträge haben mehr als 1 (den Modus gibt es nicht
+    mehr). Die ältesten kennen nur „chat“ (alles ein Gespräch)."""
     if j.get("mode") != "sync":
         return 1
     return max(int(j.get("group") or (len(j["prompts"]) if j.get("chat") else 1)), 1)
@@ -56,7 +57,8 @@ def parse_conversation(text):
 
 def history_turns(j, rows, key):
     """Gesprächsverlauf bis einschließlich der Antwort zu key als [(Prompt, Antwort), …], oder None, wenn er sich nicht
-    bilden lässt (eine Antwort fehlt). Bei synchronen Gesprächen gehören die früheren Runden desselben Gesprächs dazu.
+    bilden lässt (eine Antwort fehlt). Bei älteren synchronen Gesprächen gehören die früheren Runden desselben
+    Gesprächs dazu.
     Beginnt der erste Prompt selbst mit einem Verlauf (frühere Fortsetzung), wird dieser davor eingereiht statt
     verschachtelt: Bei jeder Fortsetzung wächst der Verlauf um genau eine Runde."""
     keys, group = list(j["prompts"]), entry_group(j)

@@ -20,7 +20,8 @@ def entry_provider(j):
 
 
 def entry_mode(j):
-    """Betriebsart eines Eintrags: "sync", "background" oder "batch". Ältere Einträge haben kein Feld mode (Batch)."""
+    """Betriebsart eines Eintrags: "background", "batch" oder "sync". Den synchronen Modus gibt es nicht mehr, ältere
+    Einträge davon bleiben aber lesbar. Ältere Einträge haben kein Feld mode (Batch)."""
     return j["mode"] if j.get("mode") in ("sync", "background") else "batch"
 
 

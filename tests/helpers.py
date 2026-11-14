@@ -1,6 +1,5 @@
 """Hilfsfunktionen für die Tests (keine Tests hier)."""
 import json
-import time
 from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
@@ -15,20 +14,8 @@ SOURCE_FILES = [APP_PATH, *sorted(PACKAGE_DIR.glob("*.py"))]  # aller Quelltext 
 # Texte der Oberfläche, auf die sich Tests stützen. test_logic prüft, dass sie mit der App übereinstimmen.
 PROVIDER_GEMINI, PROVIDER_OPENAI = "Gemini", "OpenAI"
 MODE_BATCH = "Batch (50 % Rabatt, Ergebnis nach Minuten bis Stunden)"
-MODE_SYNC = "Synchron (nacheinander, Cache-Treffer möglich)"
 MODE_BG = "Hintergrund (Long Decode, läuft bei Google, Standardpreis)"
 TAB_NEW, TAB_JOBS = "Neue Anfrage", "Jobs und Ergebnisse"
-
-
-def wait_until(predicate, timeout=15.0, interval=0.05, message="Bedingung wurde nicht rechtzeitig erfüllt"):
-    """Fragt predicate() ab, bis es etwas Wahres liefert. Für Hintergrund-Threads statt fester Pausen."""
-    end = time.time() + timeout
-    while time.time() < end:
-        value = predicate()
-        if value:
-            return value
-        time.sleep(interval)
-    raise AssertionError(message)
 
 
 # ---------- Verlauf ----------
@@ -83,6 +70,7 @@ def finished_openai_batch(**over):
 
 
 def sync_entry(**over):
+    """Älterer synchroner Eintrag. Den Modus gibt es nicht mehr, der Eintrag bleibt aber lesbar."""
     e = {"name": "sync-20261002-120000-bbbb", "mode": "sync", "state": "DONE", "label": "paar-lauf",
          "model": "gemini-4-carbon", "pdf": "a.pdf, b.pdf", "pdfs": ["a.pdf", "b.pdf"],
          "prompts": {"prompt-1": "P1", "prompt-2": "P2"}, "system": "Sei kurz.", "think": "low", "max_out": 4096,
@@ -108,14 +96,6 @@ def finished_background(**over):
          "api_model": "gemini-4-carbon"}
     e.update(over)
     return background_entry(**e)
-
-
-def wait_for_run_end(home, index=0, timeout=15.0):
-    """Wartet, bis der Eintrag an Position index (neueste zuerst) nicht mehr läuft, und liefert ihn."""
-    def finished():
-        entries = read_history(home)
-        return entries[index] if len(entries) > index and entries[index].get("state") != "RUNNING" else None
-    return wait_until(finished, timeout, message="Der synchrone Lauf ist nicht rechtzeitig fertig geworden")
 
 
 # ---------- AppTest ----------

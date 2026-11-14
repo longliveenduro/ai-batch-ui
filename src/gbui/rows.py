@@ -1,5 +1,5 @@
-"""Ergebniszeilen: die gemeinsame Zeilenform aller Modi und Anbieter und die Parser für Gemini (parse_line für Batch und
-Synchron, parse_interaction für den Hintergrund-Modus). Der Parser für OpenAI (parse_openai_line) liefert dieselbe Form."""
+"""Ergebniszeilen: die gemeinsame Zeilenform aller Modi und Anbieter und die Parser für Gemini (parse_line für den
+Batch, parse_interaction für den Hintergrund-Modus). Der Parser für OpenAI (parse_openai_line) liefert dieselbe Form."""
 import json
 
 
@@ -11,7 +11,7 @@ def pick(d, *names, default=0):
 
 
 def parse_line(o, prompts):
-    """Eine Ergebniszeile (Batch-JSONL oder umgewandelte synchrone Antwort) in eine Tabellenzeile überführen."""
+    """Eine Ergebniszeile des Batches (JSONL) in eine Tabellenzeile überführen."""
     resp = o.get("response") or {}
     usage = pick(resp, "usageMetadata", "usage_metadata", default={})
     cand = (resp.get("candidates") or [{}])[0]

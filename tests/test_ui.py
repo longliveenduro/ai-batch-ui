@@ -5,9 +5,9 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from fakes import ApiError, FakeDrive, FakeGemini, install, install_drive
-from helpers import (APP_PATH, MODE_BATCH, MODE_SYNC, PACKAGE, PACKAGE_DIR, TAB_JOBS, TAB_NEW, batch_entry, button,
+from helpers import (APP_PATH, MODE_BATCH, MODE_BG, PACKAGE, PACKAGE_DIR, TAB_JOBS, TAB_NEW, batch_entry, button,
                      captions, click, finished_batch, markdown, new_app, read_history, row, set_prompts, sync_entry,
-                     wait_for_run_end, wait_until, write_history)
+                     write_history)
 
 pytestmark = pytest.mark.ui
 
@@ -20,11 +20,6 @@ def use_fake(monkeypatch):
     def make(*args, **kwargs):
         return install(monkeypatch, FakeGemini(*args, **kwargs))
     return make
-
-
-def sync_mode(at):
-    at.radio(key="mode").set_value(MODE_SYNC)
-    at.run()
 
 
 # ---------- Formular ----------
@@ -53,19 +48,9 @@ def test_defaults_in_batch_mode(use_fake):
     assert not at.exception
     assert at.radio(key="mode").value == MODE_BATCH and at.selectbox(key="think").value == "high"
     assert at.number_input(key="max_batch").value == 32768 and at.number_input(key="max_batch").max == 32768
-    assert not [n for n in at.number_input if n.key == "group"]  # Gesprächsgröße gibt es nur synchron
+    assert not [n for n in at.number_input if n.key in ("group", "max_sync")]  # den synchronen Modus gibt es nicht mehr
     assert button(at, "Batch starten").disabled  # ohne Prompts
     assert any("Kein PDF angehängt" in c for c in captions(at))
-
-
-def test_defaults_in_sync_mode(use_fake):
-    use_fake()
-    at = new_app()
-    at.run()
-    sync_mode(at)
-    assert at.number_input(key="group").value == 1
-    assert at.number_input(key="max_sync").value == 65536 and at.number_input(key="max_sync").max == 1_048_576
-    assert button(at, "Synchron starten").disabled
 
 
 @pytest.mark.parametrize("text, expected", [
@@ -136,43 +121,22 @@ def test_a_failing_start_shows_the_error_and_stores_nothing(use_fake, home):
     assert read_history(home) == []
 
 
-# ---------- Start im synchronen Modus ----------
-def test_sync_run_shows_results_and_the_cache_sum(use_fake, home):
-    use_fake([{"text": "Erste Antwort", "cached": 0}, {"text": "Zweite Antwort", "cached": 79000}])
+# ---------- Start im Batch-Modus: Ergebnisse und PDF-Reihenfolge ----------
+def test_a_started_batch_shows_its_results_and_the_cache_sum(use_fake, home):
+    use_fake(batch_cached=60)
     at = new_app()
     at.run()
-    sync_mode(at)
     set_prompts(at, "Eins\n---\nZwei")
-    click(at, "Synchron starten")
-    assert not at.exception and "im Hintergrund" in at.success[0].value
-    assert wait_for_run_end(home)["state"] == "DONE"
+    click(at, "Batch starten")
+    assert not at.exception and "läuft" in at.success[0].value
     at.session_state["view"] = TAB_JOBS
+    at.run()  # der Jobs-Tab fragt den Batch ab und sichert das Ergebnis
     at.run()
     assert not at.exception
-    assert any("davon aus dem Cache: 79,000" in c for c in captions(at))
-    assert any("fertig" in m and "2 von 2" in m for m in markdown(at))
-    assert {"Erste Antwort", "Zweite Antwort"} <= set(markdown(at))
+    assert any("davon aus dem Cache: 120 (60%)" in c for c in captions(at))
+    assert any("JOB_STATE_SUCCEEDED" in m for m in markdown(at))
+    assert {"Batch-Antwort prompt-1", "Batch-Antwort prompt-2"} <= set(markdown(at))
     assert not any("Automatische Prüfung" in c for c in captions(at))  # nichts läuft mehr
-
-
-def test_conversations_via_the_form(use_fake, home):
-    fake = use_fake()
-    at = new_app()
-    at.run()
-    sync_mode(at)
-    at.number_input(key="group").set_value(2)
-    set_prompts(at, "Eins\n---\nZwei\n---\nDrei")
-    assert any("Sie bilden 2 Gespräche mit je 2 Prompts (das letzte mit 1)" in c for c in captions(at))
-    click(at, "Synchron starten")
-    wait_for_run_end(home)
-    assert [c["contents"] for c in fake.calls] == [
-        [("user", ["Eins"])],
-        [("user", ["Eins"]), ("model", ["Antwort 1"]), ("user", ["Zwei"])],
-        [("user", ["Drei"])],
-    ]
-    at.session_state["view"] = TAB_JOBS
-    at.run()
-    assert any("synchron, 2 Prompts pro Gespräch" in c for c in captions(at))
 
 
 def test_pdfs_from_uploads_and_drive_are_combined_in_order(use_fake, monkeypatch, home):
@@ -184,7 +148,6 @@ def test_pdfs_from_uploads_and_drive_are_combined_in_order(use_fake, monkeypatch
     }))
     at = new_app()
     at.run()
-    sync_mode(at)
     at.file_uploader[0].set_value([("Lokal 1.pdf", b"PDF-LOCAL-1", PDF), ("Lokal 2.pdf", b"PDF-LOCAL-2", PDF)])
     click(at, "Meine PDFs aus Drive laden")
     at.multiselect[0].set_value(list(at.session_state["drive_pdfs"])[:2])  # Drive A und B
@@ -193,54 +156,32 @@ def test_pdfs_from_uploads_and_drive_are_combined_in_order(use_fake, monkeypatch
     set_prompts(at, "Eins")
     order = [c for c in captions(at) if c.startswith("Reihenfolge")][0]
     assert order.index("Lokal 1.pdf") < order.index("Lokal 2.pdf") < order.index("Drive A.pdf") < order.index("Drive B.pdf")
-    click(at, "Synchron starten")
-    wait_for_run_end(home)
+    click(at, "Batch starten")
     assert fake.uploads == [b"PDF-LOCAL-1", b"PDF-LOCAL-2", b"PDF-DRIVE-A", b"PDF-DRIVE-B", b"PDF-DRIVE-C"]
-    assert fake.calls[0]["contents"] == [("user", [f"PDF:pdf{i}" for i in range(1, 6)] + ["Eins"])]
+    parts = fake.batch_requests[0]["request"]["contents"][0]["parts"]
+    assert [p["file_data"]["file_uri"].rsplit("/", 1)[1] for p in parts[:5]] == [f"pdf{i}" for i in range(1, 6)]
+    assert parts[5] == {"text": "Eins"}
     assert read_history(home)[0]["pdf"] == "Lokal 1.pdf, Lokal 2.pdf, Drive A.pdf, Drive B.pdf, Drive C.pdf"
 
 
-def test_the_cancel_button_stops_a_running_sync_run(use_fake, home):
-    use_fake(delay=1.0)
-    at = new_app()
-    at.run()
-    sync_mode(at)
-    set_prompts(at, "A\n---\nB\n---\nC\n---\nD")
-    click(at, "Synchron starten")
-    wait_until(lambda: read_history(home) and read_history(home)[0]["rows"], message="keine erste Zeile")
-    at.session_state["view"] = TAB_JOBS
-    at.run()
-    click(at, "Lauf abbrechen")
-    entry = wait_for_run_end(home)
-    assert entry["state"] == "CANCELLED" and 1 <= len(entry["rows"]) < 4
-
-
+# ---------- Jobs-Tab: Abschlussgründe ----------
 @pytest.mark.parametrize("finish, warning", [("MAX_TOKENS", "Abgeschnitten"), ("SAFETY", "SAFETY")])
 def test_unusual_finish_reasons_are_flagged_and_durations_shown(use_fake, home, finish, warning):
-    use_fake([{"text": "Teilantwort", "finish": finish}])
-    at = new_app()
-    at.run()
-    sync_mode(at)
-    set_prompts(at, "Eins")
-    click(at, "Synchron starten")
-    wait_for_run_end(home)
-    at.session_state["view"] = TAB_JOBS
+    # secs (Dauer) gibt es nur noch in den Zeilen älterer synchroner Einträge, die Anzeige bleibt für sie erhalten
+    write_history(home, [with_rows(finished_batch(), row(text="Teilantwort", finish=finish, secs=42))])
+    use_fake()
+    at = new_app(TAB_JOBS)
     at.run()
     assert any(warning in w.value for w in at.warning)
-    assert any("Dauer" in c and f"Ende: {finish}" in c for c in captions(at))
+    assert any("Dauer 42 s" in c and f"Ende: {finish}" in c for c in captions(at))
 
 
 def test_a_normal_stop_raises_no_warning(use_fake, home):
+    write_history(home, [finished_batch()])
     use_fake()
-    at = new_app()
+    at = new_app(TAB_JOBS)
     at.run()
-    sync_mode(at)
-    set_prompts(at, "Eins")
-    click(at, "Synchron starten")
-    wait_for_run_end(home)
-    at.session_state["view"] = TAB_JOBS
-    at.run()
-    assert not at.warning
+    assert not at.exception and not at.warning
 
 
 # ---------- Jobs-Tab: Batches ----------
@@ -315,16 +256,14 @@ def test_the_batch_cancel_button_calls_the_api(use_fake, home):
 
 # ---------- Jobs-Tab: Verlauf ----------
 def test_a_new_entry_is_preselected_over_an_older_selection(use_fake, home, app):
-    old = sync_entry()
+    old = finished_batch()
     write_history(home, [old])
     use_fake()
     at = new_app()
     at.run()
     at.session_state["sel"] = app.entry_label(old)
-    sync_mode(at)
     set_prompts(at, "Frage")
-    click(at, "Synchron starten")
-    wait_for_run_end(home)
+    click(at, "Batch starten")
     newest = read_history(home)[0]
     assert newest["name"] != old["name"] and at.session_state["sel"] == app.entry_label(newest)
     at.session_state["view"] = TAB_JOBS
@@ -332,7 +271,7 @@ def test_a_new_entry_is_preselected_over_an_older_selection(use_fake, home, app)
     assert any(c.startswith(newest["name"]) for c in captions(at))
 
 
-def test_reuse_inputs_fills_the_form_and_switches_the_tab(use_fake, home):
+def test_reuse_inputs_of_an_old_synchronous_entry_opens_the_background_mode(use_fake, home):
     entry = sync_entry()
     write_history(home, [entry])
     use_fake()
@@ -341,11 +280,12 @@ def test_reuse_inputs_fills_the_form_and_switches_the_tab(use_fake, home):
     at.button(key="reuse:" + entry["name"]).click()
     at.run()
     assert not at.exception and at.session_state["view"] == TAB_NEW
-    assert at.radio(key="mode").value == MODE_SYNC
+    assert at.radio(key="mode").value == MODE_BG  # den synchronen Modus gibt es nicht mehr
     assert at.text_area(key="raw").value == "P1\n---\nP2" and at.text_area(key="system").value == "Sei kurz."
-    assert at.selectbox(key="think").value == "low"
-    assert at.number_input(key="group").value == 2 and at.number_input(key="max_sync").value == 4096
-    assert any("übernommen" in i.value and "a.pdf, b.pdf" in i.value for i in at.info)
+    assert at.selectbox(key="think").value == "low" and at.number_input(key="max_bg").value == 4096
+    assert not [n for n in at.number_input if n.key in ("group", "max_sync")]
+    assert any("übernommen" in i.value and "a.pdf, b.pdf" in i.value and "Modus gibt es nicht mehr" in i.value
+               for i in at.info)
     at.run()
     assert not at.info  # der Hinweis erscheint nur einmal
 
@@ -439,6 +379,58 @@ def test_entries_from_older_versions_still_open(use_fake, home):
     assert any("synchron, 2 Prompts pro Gespräch" in c for c in captions(at)) and "Alte Antwort" in markdown(at)
 
 
+# ---------- Jobs-Tab: ältere synchrone Einträge (den Modus gibt es nicht mehr) ----------
+def test_an_old_synchronous_entry_stays_readable_without_any_api_call(use_fake, home):
+    entry = sync_entry(rows=[row(key="prompt-1", prompt="P1", text="A1", secs=7),
+                             row(key="prompt-2", prompt="P2", text="A2", secs=9)])
+    write_history(home, [entry])
+    fake = use_fake()
+    at = new_app(TAB_JOBS)
+    at.run()
+    assert not at.exception and not at.error
+    assert any("synchron, 2 Prompts pro Gespräch" in c for c in captions(at))
+    assert any("fertig" in m and "2 von 2" in m for m in markdown(at))
+    assert {"A1", "A2"} <= set(markdown(at)) and any("Dauer 7 s" in c for c in captions(at))
+    assert not any("Automatische Prüfung" in c for c in captions(at))
+    assert fake.get_calls == 0 and fake.interaction_gets == []
+    labels = [b.label for b in at.button]
+    assert not {"Lauf abbrechen", "Batch abbrechen", "Läufe abbrechen", "Status prüfen / Ergebnisse laden"} & set(
+        labels)
+    assert {"Eingaben übernehmen", "Gespräch fortsetzen"} <= set(labels)
+
+
+@pytest.mark.parametrize("state, error, shown", [
+    ("CANCELLED", None, "abgebrochen"),
+    ("FAILED", "Boom", "fehlgeschlagen"),
+    ("RUNNING", None, "unterbrochen"),  # beim Beenden der App noch am Laufen: kein Thread lebt mehr
+    (None, None, "unterbrochen"),  # ohne Feld state (sehr alter Eintrag)
+])
+def test_an_old_synchronous_entry_shows_its_saved_state(use_fake, home, state, error, shown):
+    entry = sync_entry(state=state, error=error, rows=[row()])
+    if state is None:
+        del entry["state"]
+    write_history(home, [entry])
+    fake = use_fake()
+    at = new_app(TAB_JOBS)
+    at.run()
+    assert not at.exception
+    assert any(f"Status: **{shown}" in m and "1 von 2 Prompts fertig" in m for m in markdown(at))
+    assert (not at.error) if error is None else any(error in e.value for e in at.error)
+    assert not any("Automatische Prüfung" in c for c in captions(at)) and fake.get_calls == 0
+    assert not [b for b in at.button if b.label in ("Lauf abbrechen", "Batch abbrechen")]
+
+
+def test_an_interrupted_old_synchronous_entry_can_be_deleted(use_fake, home):
+    entry = sync_entry(state="RUNNING", rows=[])
+    write_history(home, [entry])
+    use_fake()
+    at = new_app(TAB_JOBS)
+    at.run()
+    at.button(key="del:" + entry["name"]).click()
+    at.run()
+    assert read_history(home) == [] and not at.exception
+
+
 # ---------- Jobs-Tab: Prompts im Wortlaut und Gespräche fortsetzen ----------
 LONG_PROMPT = ("Erzähle Abschnitt 3 in einfacher Sprache nach und achte auf kurze Sätze und klare, einfache Wörter. "
                "Am Ende folgt eine Zusammenfassung in drei Sätzen.")
@@ -530,7 +522,7 @@ def test_a_row_without_an_answer_offers_no_continuation(use_fake, home):
     assert not [t for t in at.toggle if t.label == "Verlaufstext zeigen"]
 
 
-def test_continue_conversation_fills_the_form_with_the_history(use_fake, home, app):
+def test_continuing_an_old_synchronous_conversation_fills_the_form_with_all_its_rounds(use_fake, home, app):
     entry = sync_entry(rows=[row(key="prompt-1", prompt="P1", text="A1"), row(key="prompt-2", prompt="P2", text="A2")])
     write_history(home, [entry])
     use_fake()
@@ -540,14 +532,14 @@ def test_continue_conversation_fills_the_form_with_the_history(use_fake, home, a
     at.run()
     assert not at.exception and at.session_state["view"] == TAB_NEW
     assert at.text_area(key="raw").value == app.conversation_text([("P1", "A1"), ("P2", "A2")])  # beide Runden
-    assert at.radio(key="mode").value == MODE_SYNC and at.text_area(key="system").value == "Sei kurz."
-    assert at.selectbox(key="think").value == "low" and at.number_input(key="max_sync").value == 4096
-    assert at.number_input(key="group").value == 1  # der Verlauf steckt im Prompt: keine Gesprächsgruppen
+    assert at.radio(key="mode").value == MODE_BG  # den synchronen Modus gibt es nicht mehr
+    assert at.text_area(key="system").value == "Sei kurz."
+    assert at.selectbox(key="think").value == "low" and at.number_input(key="max_bg").value == 4096
     # Der einmalige Hinweis (st.info) erscheint erst im echten Browser nach dem vollen Rerun, nicht im AppTest.
-    assert any(app.TALK_NEW in w.value for w in at.warning) and button(at, "Synchron starten").disabled
+    assert any(app.TALK_NEW in w.value for w in at.warning) and button(at, "Im Hintergrund starten").disabled
     assert any("1 von 1 Prompt(s) setzen ein früheres Gespräch fort" in c for c in captions(at))
     set_prompts(at, at.text_area(key="raw").value + "Neuer Prompt")
-    assert not [w for w in at.warning if app.TALK_NEW in w.value] and not button(at, "Synchron starten").disabled
+    assert not [w for w in at.warning if app.TALK_NEW in w.value] and not button(at, "Im Hintergrund starten").disabled
 
 
 def test_continuing_a_batch_answer_switches_to_batch_mode(use_fake, home):
@@ -578,23 +570,27 @@ def test_a_conversation_can_be_continued_again_and_again(use_fake, home, app):
     fake = use_fake()
     at = new_app()
     at.run()
-    sync_mode(at)
-    set_prompts(at, "Eins")
-    click(at, "Synchron starten")
-    wait_for_run_end(home)  # Antwort 1
+    sent = []
+
+    def start(text):
+        """Batch mit einem Prompt starten, den gesendeten Prompt merken und die Antwort im Jobs-Tab laden."""
+        fake.batch_text = f"Antwort {len(sent) + 1}"
+        set_prompts(at, text)
+        click(at, "Batch starten")
+        sent.append(fake.batch_requests[0]["request"]["contents"][0]["parts"][-1]["text"])  # ohne PDFs: der Prompt
+        at.session_state["view"] = TAB_JOBS
+        at.run()  # der Jobs-Tab fragt den Batch ab und sichert die Antwort
+        at.run()
+
+    start("Eins")
     for rounds, follow_up in ((1, "Zwei"), (2, "Drei")):
         newest = read_history(home)[0]
-        at.session_state["view"] = TAB_JOBS
-        at.run()
         at.button(key=f"talk:{newest['name']}:prompt-1").click()
         at.run()
         raw = at.text_area(key="raw").value
         assert raw.count(app.TALK_BEGIN) == 1 and raw.count(app.TALK_INTRO) == 1  # nichts ist verschachtelt
         assert len(app.parse_conversation(raw)[0]) == rounds
-        set_prompts(at, raw + follow_up)
-        click(at, "Synchron starten")
-        wait_for_run_end(home)
-    sent = [call["contents"][0][1][0] for call in fake.calls]  # der Prompt jeder Anfrage (keine PDFs)
+        start(raw + follow_up)
     assert sent[0] == "Eins"
     assert app.parse_conversation(sent[1]) == ([("Eins", "Antwort 1")], "Zwei")
     assert app.parse_conversation(sent[2]) == ([("Eins", "Antwort 1"), ("Zwei", "Antwort 2")], "Drei")

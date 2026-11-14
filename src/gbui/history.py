@@ -1,4 +1,4 @@
-"""Verlauf der Läufe (data/batch_jobs.json). Batches laufen bis zu 24 h, synchrone Läufe im Hintergrund: daher
+"""Verlauf der Läufe (data/batch_jobs.json). Batches und Hintergrund-Läufe laufen bis zu 24 h bei Google: daher
 lokal gespeichert. Geschrieben wird nur über mutate_jobs()."""
 import json
 import os
@@ -13,8 +13,8 @@ from .config import DATA_DIR, HISTORY
 
 @st.cache_resource(show_spinner=False)
 def runtime():
-    """Prozessweit geteilt: Sperre für den Verlauf, laufende Threads, Abbruchwünsche."""
-    return SimpleNamespace(lock=threading.Lock(), threads={}, cancel=set())
+    """Prozessweit geteilt: Sperre für den Verlauf (mehrere Sitzungen laufen in eigenen Threads)."""
+    return SimpleNamespace(lock=threading.Lock())
 
 
 def load_jobs():
