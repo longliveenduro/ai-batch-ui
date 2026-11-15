@@ -5,6 +5,7 @@ import streamlit as st
 
 from .config import BATCH_MAX_OUT, DONE, MAX_POLL_ERRORS, POLL_SECONDS, PROVIDER_GEMINI, TALK_NEW
 from .forms import continue_conversation
+from .naming import file_stem
 from .providers import batch_info, cancel_batch, entry_mode, entry_provider, refresh
 from .talk import conversation_text, entry_group, history_turns, parse_conversation, short_prompt
 
@@ -68,7 +69,7 @@ def show_rows(j, rows):
     tin, tc = sum(r["in"] for r in rows), sum(r["cached"] for r in rows)
     st.caption(f"Eingabe-Token gesamt: {tin:,}, davon aus dem Cache: {tc:,}" + (f" ({tc / tin:.0%})" if tin else ""))
     md = "\n\n".join(f"## {r['key']}\n\n**Prompt:** {r['prompt']}\n\n{r['text'] or r['error']}" for r in rows)
-    st.download_button("Ergebnisse als Markdown", md, file_name=f"{j['label']}.md", key="dl:" + j["name"])
+    st.download_button("Ergebnisse als Markdown", md, file_name=f"{file_stem(j['label'])}.md", key="dl:" + j["name"])
     for r in rows:
         with st.expander(f"{r['key']}: {short_prompt(r['prompt'])}", expanded=len(rows) <= 3):
             if st.toggle("Prompt im Wortlaut", key=f"prompt:{j['name']}:{r['key']}",

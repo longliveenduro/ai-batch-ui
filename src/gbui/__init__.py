@@ -11,6 +11,7 @@ Ein Modul importiert nur Module, die in dieser Liste über ihm stehen. So bleibt
     openai_batch   OpenAI: PDF hochladen, Batch starten, Ergebnisse lesen
     providers      Anbieter: Client, Betriebsart eines Eintrags, Status holen und sichern, abbrechen
     talk           Gesprächsverlauf als Text
+    naming         Namen der Einträge: aus dem Prompt erzeugen, Standardname, Suche im Verlauf
     forms          Formular „Neue Anfrage“ und Verlaufseinträge (Callbacks)
     views          Anzeige der Einträge und Ergebnisse (läuft als Fragment)
 

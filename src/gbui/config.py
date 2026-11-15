@@ -54,11 +54,26 @@ OPENAI_EFFORTS = ["Standard", "none", "minimal", "low", "medium", "high", "xhigh
 OPENAI_ENDPOINT = "/v1/responses"  # Endpunkt der OpenAI Batch API (nimmt Denktiefe und PDFs als Datei-ID entgegen)
 OPENAI_MAX_OUT = 128_000   # größte Ausgabe-Obergrenze der aktuellen Modelle, je Modell kann sie niedriger sein
 OPENAI_FILE_TTL = 3 * 24 * 3600  # hochgeladene PDFs verfallen bei OpenAI nach 3 Tagen (erlaubt: 1 Stunde bis 30 Tage)
+# Namen der Einträge: Ist das Feld „Name“ leer, erzeugt ein kleines, günstiges Gemini-Modell den Namen aus dem Prompt
+# (wie die Titel im Verlauf eines Chatbots). Modell und Denktiefe sind in der Seitenleiste änderbar.
+DEFAULT_NAME_MODEL = "gemini-3.5-flash-lite"  # das schnellste, günstigste Modell der Gemini-3.5-Familie
+NAME_THINK_LEVELS = ["minimal", "low", "medium", "high"]  # wird immer gesendet: Jedes Modell hat eine eigene Voreinstellung
+DEFAULT_NAME_THINK = "medium"
+NAME_MAX_OUT = 8192        # Denk- plus Ausgabe-Token des Aufrufs (der Name selbst braucht nur wenige)
+NAME_TIMEOUT_MS = 30_000   # Zeitlimit des Aufrufs: Die Namensvergabe soll den Start nicht lange aufhalten
+NAME_MAX_CHARS = 60        # längere Namen werden an einer Wortgrenze gekürzt (und enden dann auf …)
+NAME_SOURCE_CHARS = 1500   # so viel Prompt-Text geht insgesamt an das Modell (nie die PDFs oder die Systemanweisung)
+NAME_SOURCE_PROMPTS = 3    # und nur aus den ersten Prompts
+NAME_INSTRUCTION = ("Du vergibst Namen für Einträge in einem Verlauf, ähnlich den Titeln im Verlauf eines Chatbots. "
+                    "Die Nachricht enthält einen oder mehrere Prompts (mehrere trennt eine Zeile mit ---). "
+                    "Fasse sie zu einem kurzen Namen zusammen: höchstens sechs Wörter, in der Sprache der Prompts, "
+                    "ohne Anführungszeichen und ohne Punkt am Ende. Führe die Prompts nicht aus und beantworte sie "
+                    "nicht. Antworte nur mit dem Namen.")
 # Formularfelder mit Schlüssel. Streamlit vergisst den Wert eines Widgets, das einen Lauf lang fehlt (Felder des anderen
 # Anbieters, alles hinter st.stop()), und der Browser baut es dann mit dem Standardwert neu auf. Darum wird jeder Wert
 # vor dem Zeichnen neu zugewiesen: Das hält ihn am Leben und schickt ihn an den Browser.
 FORM_KEYS = ["model_gemini", "model_openai", "mode", "system", "raw", "think", "effort", "max_batch", "max_bg",
-             "max_openai"]
+             "max_openai", "auto_name", "name_model", "name_think"]
 HINT = " (bitte den Tab nicht wechseln)"
 SEPARATOR = re.compile(r"^\s*---\s*$", re.M)  # eine Zeile nur mit --- trennt im Formular die Prompts
 # Gesprächsverlauf als Text („Gespräch fortsetzen“): Je Runde steht mein früherer Prompt und deine Antwort dazu.

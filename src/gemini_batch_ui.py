@@ -13,6 +13,9 @@ Ordner:   conf/ (Zugangsdaten, geheim: credentials.json, token.json) und data/ (
 Drive:    (optional) In der Google Cloud Console die Drive API aktivieren, eine OAuth-Client-ID
           vom Typ „Desktop-App“ erstellen und als conf/credentials.json ablegen.
           Beim ersten Zugriff öffnet sich der Browser zur Freigabe (nur Lesezugriff).
+Namen:    Ist das Feld „Name“ leer, erzeugt ein kleines Gemini-Modell (Voreinstellung gemini-3.5-flash-lite) den
+          Namen aus dem Prompt (Seitenleiste „Namen der Einträge“). Im Tab „Jobs und Ergebnisse“ lassen sich Name
+          und Beschreibung ändern, und die Suche findet Einträge wieder.
 Aufbau:   Diese Datei enthält nur die Oberfläche (Seitenleiste, Tabs, Formular, Start-Handler). Die Logik steht
           im Paket gbui/ neben dieser Datei (Übersicht in der README, Abschnitt 8).
 """
@@ -23,14 +26,16 @@ from datetime import datetime
 import streamlit as st
 
 from gbui.background import start_background
-from gbui.config import (BATCH_MAX_OUT, BG_DEFAULT_OUT, BG_MAX_OUT, DEFAULT_MODEL, DEFAULT_OPENAI_MODEL, DONE, FORM_KEYS,
-                         HINT, MAX_POLL_ERRORS, MODE_BATCH, MODE_BG, OPENAI_EFFORTS, OPENAI_MAX_OUT, POLL_SECONDS,
+from gbui.config import (BATCH_MAX_OUT, BG_DEFAULT_OUT, BG_MAX_OUT, DEFAULT_MODEL, DEFAULT_NAME_MODEL,
+                         DEFAULT_NAME_THINK, DEFAULT_OPENAI_MODEL, DONE, FORM_KEYS, HINT, MAX_POLL_ERRORS, MODE_BATCH,
+                         MODE_BG, NAME_SOURCE_CHARS, NAME_THINK_LEVELS, OPENAI_EFFORTS, OPENAI_MAX_OUT, POLL_SECONDS,
                          PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDERS, SEPARATOR, TABS, TALK_NEW, THINK_LEVELS,
                          prepare_folders)
 from gbui.drive import drive_fetch, drive_id, drive_service
-from gbui.forms import delete_entry, entry_label, reuse_inputs
+from gbui.forms import delete_entry, entry_label, generate_title, reuse_inputs, save_details
 from gbui.gemini import start_batch, upload_pdf
 from gbui.history import load_jobs, mutate_jobs, runtime
+from gbui.naming import choose_label, default_label, search_jobs
 from gbui.openai_batch import start_openai_batch, upload_pdf_openai
 from gbui.providers import batch_info, entry_mode, entry_provider, make_client
 from gbui.talk import entry_group, parse_conversation
@@ -59,6 +64,27 @@ with st.sidebar:
     else:
         st.session_state.setdefault("model_gemini", DEFAULT_MODEL)
         model = st.text_input("Modell", key="model_gemini")
+    with st.expander("Namen der Einträge"):
+        st.session_state.setdefault("auto_name", True)
+        st.session_state.setdefault("name_model", DEFAULT_NAME_MODEL)
+        st.session_state.setdefault("name_think", DEFAULT_NAME_THINK)
+        auto_name = st.checkbox(
+            "Name aus dem Prompt erzeugen", key="auto_name",
+            help="Ist das Feld „Name“ in „Neue Anfrage“ leer, erzeugt ein kleines Gemini-Modell den Namen aus dem "
+                 "Anfang der Prompts, ähnlich den Titeln im Verlauf eines Chatbots. Dafür geht ein Auszug der Prompts "
+                 f"(höchstens {NAME_SOURCE_CHARS} Zeichen, nie die PDFs) an Google, auch wenn der Lauf selbst bei "
+                 "OpenAI läuft. Ohne Gemini API-Key oder bei einem Fehler gilt der Standardname.")
+        name_model = st.text_input(
+            "Modell für die Namen", key="name_model",
+            help="Gemini-Modell für die Namen, mit dem Gemini API-Key von oben. Voreinstellung ist "
+                 "gemini-3.5-flash-lite, das schnellste und günstigste Modell der Gemini-3.5-Familie.")
+        name_think = st.selectbox(
+            "Denktiefe für die Namen", NAME_THINK_LEVELS, key="name_think",
+            help="Für einen kurzen Namen genügt minimal oder low. gemini-3.5-flash-lite denkt ohne Angabe auf "
+                 "minimal, die App sendet die Stufe immer. Welche Stufen ein anderes Modell kennt, steht in dessen "
+                 "Doku. Bei einem Fehler gilt der Standardname.")
+        if not keys[PROVIDER_GEMINI]:
+            st.caption("Ohne Gemini API-Key bekommt jeder neue Eintrag den Standardnamen.")
 if not keys[provider]:
     env_name = "OPENAI_API_KEY" if provider == PROVIDER_OPENAI else "GEMINI_API_KEY"
     st.info(f"Trage links deinen {provider} API-Key ein oder setze die Umgebungsvariable {env_name}.")
@@ -75,6 +101,13 @@ try:
 except RuntimeError as e:  # z. B. das Paket openai fehlt
     st.error(f"Der {provider}-Client lässt sich nicht erstellen: {e}")
     st.stop()
+
+
+def gemini_client():
+    """Gemini-Client für die Namen: der Client des Laufs, bei OpenAI ein eigener (None ohne Gemini API-Key)."""
+    return client if provider == PROVIDER_GEMINI else client_for(PROVIDER_GEMINI)
+
+
 rt = runtime()
 
 tab_new, tab_jobs = st.tabs(TABS, key="view", on_change="rerun")  # .open sagt, welcher Tab offen ist
@@ -156,7 +189,16 @@ with tab_new:
                                   help="Im Batch-Betrieb begrenzt die API die Ausgabe auf 32768 Token. Mehr geht im "
                                        "Modus „Hintergrund“ (Long Decode).")
     kind = "openai" if provider == PROVIDER_OPENAI else "background" if bg else "batch"
-    label = c3.text_input("Name", f"{kind}-{datetime.now():%Y%m%d-%H%M}", key="label_" + kind)
+    naming_on = auto_name and bool(keys[PROVIDER_GEMINI])  # sonst gilt der Standardname
+    label = c3.text_input("Name", key="label_" + kind,
+                          placeholder="automatisch aus dem Prompt" if naming_on else default_label(kind),
+                          help="Leer lassen: Der Name wird aus dem Prompt erzeugt (Seitenleiste „Namen der Einträge“), "
+                               "sonst gilt der Standardname. Im Tab „Jobs und Ergebnisse“ lassen sich Name und "
+                               "Beschreibung später ändern.")
+    if naming_on and provider == PROVIDER_OPENAI and not label.strip():
+        st.caption(f"Der Name wird mit Gemini erzeugt: Ein Auszug der Prompts (höchstens {NAME_SOURCE_CHARS} Zeichen, "
+                   "ohne PDFs) geht dafür an Google, auch bei einem OpenAI-Lauf. Abschalten: Seitenleiste, "
+                   "„Namen der Einträge“.")
     if bg:
         st.caption(
             f"{len(prompts)} Prompt(s) erkannt. Jeder Prompt läuft als Hintergrund-Interaktion bei Google (Interactions "
@@ -198,43 +240,69 @@ with tab_new:
                 for k, (fname, data) in enumerate(unique, 1):
                     status.update(label=f"Lade PDF {k} von {len(unique)} zu {provider} hoch …" + HINT)
                     pdfs.append((upload_pdf_openai if provider == PROVIDER_OPENAI else upload_pdf)(client, fname, data))
+                if naming_on and not label.strip():
+                    status.update(label="Erzeuge den Namen …" + HINT)
+                title, generated, name_error = choose_label(label, kind, prompts, gemini_client, name_model, name_think,
+                                                            auto_name)
                 status.update(label="Starte …" + HINT)
                 if bg:
-                    entry = start_background(client, rt, model, pdfs, names, prompts, system.strip(), think, max_out, label)
+                    entry = start_background(client, rt, model, pdfs, names, prompts, system.strip(), think, max_out,
+                                             title)
                 elif provider == PROVIDER_OPENAI:
                     batch_id, keyed = start_openai_batch(client, model, [f.id for f in pdfs], prompts, system.strip(),
-                                                         think, max_out, label)
-                    entry = {"name": batch_id, "provider": PROVIDER_OPENAI, "label": label, "model": model,
+                                                         think, max_out, title)
+                    entry = {"name": batch_id, "provider": PROVIDER_OPENAI, "label": title, "model": model,
                              "pdf": ", ".join(names) or None, "pdfs": names, "prompts": keyed, "system": system.strip(),
                              "think": think, "max_out": int(max_out),
                              "created": datetime.now().isoformat(timespec="seconds")}
                     mutate_jobs(rt.lock, lambda jobs: jobs.insert(0, entry))
                 else:
-                    job, keyed = start_batch(client, model, pdfs, prompts, system.strip(), think, max_out, label)
-                    entry = {"name": job.name, "label": label, "model": model, "pdf": ", ".join(names) or None,
+                    job, keyed = start_batch(client, model, pdfs, prompts, system.strip(), think, max_out, title)
+                    entry = {"name": job.name, "label": title, "model": model, "pdf": ", ".join(names) or None,
                              "pdfs": names, "prompts": keyed, "system": system.strip(), "think": think,
                              "max_out": int(max_out), "created": datetime.now().isoformat(timespec="seconds")}
                     mutate_jobs(rt.lock, lambda jobs: jobs.insert(0, entry))
                 status.update(label="Gestartet", state="complete")
             st.session_state["sel"] = entry_label(entry)  # der neue Eintrag ist im Jobs-Tab vorausgewählt
+            st.session_state["jobs_search"] = ""  # und eine Suche dort würde ihn vielleicht verstecken
             if bg:
                 st.success(f"{entry['name']} läuft bei Google. Im Tab „Jobs und Ergebnisse“ wird der Stand alle "
                            f"{POLL_SECONDS} Sekunden geprüft, die App muss dafür nicht durchgehend laufen.")
             else:
                 st.success(f"{entry['name']} läuft. Im Tab „Jobs und Ergebnisse“ wird der Status alle "
                            f"{POLL_SECONDS} Sekunden geprüft.")
+            if name_error:
+                st.warning(f"{name_error} Der Eintrag heißt „{title}“. Im Tab „Jobs und Ergebnisse“ lässt sich der "
+                           "Name ändern.")
+            elif generated:
+                st.caption(f"Name aus dem Prompt erzeugt: „{title}“. Im Tab „Jobs und Ergebnisse“ lässt er sich "
+                           "ändern.")
         except Exception as e:
             st.error(f"Start fehlgeschlagen: {e}")
 
 with tab_jobs:
-    jobs = load_jobs()
-    if not jobs:
+    all_jobs = load_jobs()
+    name_note = st.session_state.pop("name_note", None)  # einmaliger Hinweis (Name erzeugen gescheitert)
+    if name_note:
+        st.warning(name_note)
+    query = st.text_input("Suche", key="jobs_search", placeholder="Name, Beschreibung, Prompt, PDF oder ID",
+                          help="Zeigt nur Einträge, in denen alle Suchwörter vorkommen (Groß- und Kleinschreibung "
+                               "egal). Durchsucht werden Name, Beschreibung, ID, PDF-Namen und Prompts."
+                          ) if all_jobs else ""
+    jobs = search_jobs(all_jobs, query)
+    if query.strip():
+        st.caption(f"Treffer: {len(jobs)} von {len(all_jobs)} Einträgen.")
+    if not all_jobs:
         st.info("Noch nichts gestartet.")
+    elif not jobs:
+        st.info(f"Kein Eintrag passt zu „{query.strip()}“.")
     else:
         opts = {entry_label(x): x for x in jobs}
         if st.session_state.get("sel") not in opts:
             st.session_state.pop("sel", None)
         j = opts[st.selectbox("Eintrag", list(opts), key="sel")]
+        if j.get("description"):
+            st.caption(j["description"])
         mode_j, grp, entry_prov = entry_mode(j), entry_group(j), entry_provider(j)
         kind_txt = ((f"synchron, {grp} Prompts pro Gespräch" if grp > 1 else "synchron") if mode_j == "sync"
                     else "Hintergrund (Long Decode)" if mode_j == "background"
@@ -248,13 +316,25 @@ with tab_jobs:
             info = batch_info(j)
             failed = st.session_state.get("errn:" + j["name"], 0) >= MAX_POLL_ERRORS
             running = not ((info and info["state"] in DONE) or failed)
-        a1, a2, _ = st.columns([1, 1, 3])
+        a1, a2, a3, _ = st.columns([1, 1, 1, 2])
         a1.button("Eingaben übernehmen", on_click=reuse_inputs, args=(j,), key="reuse:" + j["name"],
                   help="Übernimmt Prompts und Einstellungen ins Formular „Neue Anfrage“.")
         with a2.popover("Eintrag löschen", disabled=running):
             st.write("Entfernt den Eintrag samt lokal gesicherter Ergebnisse aus dem Verlauf. "
                      "Beim Anbieter bleibt alles unverändert.")
             st.button("Ja, endgültig löschen", on_click=delete_entry, args=(j["name"],), key="del:" + j["name"])
+        with a3.popover("Name und Beschreibung"):
+            st.session_state.setdefault("title:" + j["name"], j["label"])
+            st.session_state.setdefault("descr:" + j["name"], j.get("description", ""))
+            st.text_input("Name", key="title:" + j["name"])
+            st.text_area("Beschreibung (optional)", key="descr:" + j["name"], height=100,
+                         help="Freier Text, den die Suche mit durchsucht, z. B. wofür der Lauf war.")
+            st.button("Speichern", on_click=save_details, args=(j,), key="save:" + j["name"])
+            st.button("Name aus dem Prompt erzeugen", on_click=generate_title,
+                      args=(j, gemini_client, name_model, name_think), key="gen:" + j["name"],
+                      disabled=not keys[PROVIDER_GEMINI],
+                      help="Erzeugt den Namen neu, mit den Einstellungen unter „Namen der Einträge“ (Seitenleiste)."
+                           if keys[PROVIDER_GEMINI] else "Dafür fehlt der Gemini API-Key (Seitenleiste).")
         job_client = client if entry_prov == provider else client_for(entry_prov)  # jeder Eintrag mit seinem Anbieter
         polling = on_jobs_tab and running and job_client is not None
         st.fragment(run_every=POLL_SECONDS if polling else None)(job_panel)(job_client, j, polling)

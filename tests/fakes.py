@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from google.genai import interactions
+from google.genai import interactions, types
 from openai.types import Batch, FileObject
 
 
@@ -46,6 +46,18 @@ def make_interaction(text="Antwort", *, status="completed", interaction_id="v1_f
     if errors:
         payload["errors"] = errors
     return interactions.Interaction.model_validate(payload)
+
+
+def make_name_response(text="Name aus dem Prompt", *, thought="Überlegung"):
+    """Echte SDK-Antwort (types.GenerateContentResponse) von models.generate_content, wie bei der Namensvergabe: ein
+    Denk-Teil (zählt nicht zum Text) und der Text. Ohne Text (None oder "") gibt es nur den Denk-Teil, response.text
+    ist dann None."""
+    parts = [{"text": thought, "thought": True}] if thought else []
+    if text:
+        parts.append({"text": text})
+    finish = "STOP" if text else "MAX_TOKENS"
+    return types.GenerateContentResponse.model_validate({
+        "candidates": [{"content": {"role": "model", "parts": parts}, "finish_reason": finish}]})
 
 
 def _state(name):
@@ -110,6 +122,21 @@ class _Batches:
         self.p.cancelled.append(name)
 
 
+class _Models:
+    """models.generate_content (Namensvergabe): zeichnet jeden Aufruf auf und antwortet mit name_text (ein echtes
+    SDK-Objekt) oder wirft name_error."""
+
+    def __init__(self, parent):
+        self.p = parent
+
+    def generate_content(self, *, model, contents, config=None):
+        p = self.p
+        p.name_calls.append({"model": model, "contents": contents, "config": config})
+        if p.name_error:
+            raise p.name_error
+        return make_name_response(p.name_text)
+
+
 class _Interactions:
     """Interactions API (Hintergrund-Modus): create legt eine laufende Interaktion an, get liefert je nach
     interaction_results den Stand (Reihenfolge der Anlage), cancel notiert nur."""
@@ -158,11 +185,14 @@ class FakeGemini:
             interactions.get antwortet (z. B. {"status": "in_progress"}), oder eine Exception. Fehlt ein Eintrag, ist
             die Interaktion fertig. interaction_create_errors: {Nummer des create-Aufrufs ab 0: Exception}.
             interaction_cancel_error: Fehler von interactions.cancel.
+    name_text / name_error: Antworttext bzw. Fehler von models.generate_content (Namensvergabe), name_calls zeichnet
+            die Aufrufe auf (model, contents, config).
     """
 
     def __init__(self, *, batch_state="JOB_STATE_SUCCEEDED", get_error=None, batch_cached=0, batch_text=None,
                  upload_state=None, get_states=None, create_error=None, interaction_results=None,
-                 interaction_create_errors=None, interaction_cancel_error=None):
+                 interaction_create_errors=None, interaction_cancel_error=None, name_text="Name aus dem Prompt",
+                 name_error=None):
         self.batch_state = batch_state
         self.get_error = get_error
         self.batch_cached = batch_cached
@@ -180,8 +210,9 @@ class FakeGemini:
         self.interaction_create_calls = 0
         self.interaction_requests, self.interaction_ids = [], []
         self.interaction_gets, self.cancelled_interactions = [], []
+        self.name_text, self.name_error, self.name_calls = name_text, name_error, []
         self.files, self.batches = _Files(self), _Batches(self)
-        self.interactions = _Interactions(self)
+        self.interactions, self.models = _Interactions(self), _Models(self)
 
 
 def install(monkeypatch, fake):
