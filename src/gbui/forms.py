@@ -1,10 +1,12 @@
 """Formular „Neue Anfrage“ und Verlaufseinträge: Beschriftung und Callbacks (Eingaben übernehmen, Gespräch
-fortsetzen, Eintrag löschen). Callbacks setzen Widget-Werte, bevor das Widget im Lauf erzeugt wird."""
+fortsetzen, Name und Beschreibung ändern, Eintrag löschen). Callbacks setzen Widget-Werte, bevor das Widget im Lauf
+erzeugt wird."""
 import streamlit as st
 
 from .config import (BATCH_MAX_OUT, BG_MAX_OUT, MODE_BATCH, MODE_BG, OPENAI_EFFORTS, OPENAI_MAX_OUT, PROVIDER_OPENAI,
                      TABS, TALK_NEW, THINK_LEVELS)
 from .history import mutate_jobs, runtime
+from .naming import generate_name, matches
 from .providers import entry_mode, entry_provider
 from .talk import conversation_text
 
@@ -69,3 +71,51 @@ def delete_entry(name):
     for prefix in ("res:", "err:", "errn:"):
         st.session_state.pop(prefix + name, None)
     st.session_state.pop("sel", None)
+
+
+def keep_visible(entry):
+    """Callback-Hilfe: den Eintrag (mit seinem neuen Namen) im Jobs-Tab auswählen. Passt er nicht mehr zur Suche, wird
+    die Suche geleert, damit er sichtbar bleibt und nicht ein anderer Eintrag an seine Stelle rückt."""
+    ss = st.session_state
+    ss["sel"] = entry_label(entry)
+    if not matches(entry, ss.get("jobs_search") or ""):
+        ss["jobs_search"] = ""
+
+
+def update_entry(name, **fields):
+    """Felder eines Eintrags im Verlauf ändern (unter Sperre, auf dem frischen Stand der Datei)."""
+    def change(jobs):
+        for x in jobs:
+            if x["name"] == name:
+                x.update(fields)
+    mutate_jobs(runtime().lock, change)
+
+
+def save_details(j):
+    """Callback: Name und Beschreibung aus den Feldern im Popover „Name und Beschreibung“ im Eintrag speichern. Ein
+    leerer Name behält den bisherigen, die Beschreibung darf leer sein."""
+    ss = st.session_state
+    title = " ".join((ss.get("title:" + j["name"]) or "").split()) or j["label"]
+    description = (ss.get("descr:" + j["name"]) or "").strip()
+    update_entry(j["name"], label=title, description=description)
+    ss["title:" + j["name"]] = title
+    keep_visible({**j, "label": title, "description": description})
+
+
+def generate_title(j, get_client, model, think):
+    """Callback: Name des Eintrags aus seinen Prompts erzeugen (wie beim Start) und speichern. get_client() liefert den
+    Gemini-Client. Scheitert es, steht der Grund als einmaliger Hinweis (name_note) im Jobs-Tab, der Name bleibt."""
+    ss = st.session_state
+    try:
+        client = get_client()
+        if client is None:
+            raise RuntimeError("Der Gemini API-Key fehlt (Seitenleiste).")
+        title = generate_name(client, list(j["prompts"].values()), model, think)
+        if not title:
+            raise RuntimeError("Das Modell hat keinen Namen geliefert.")
+    except Exception as e:  # jeder Fehler wird gemeldet, nichts bricht ab
+        ss["name_note"] = f"Der Name ließ sich nicht aus dem Prompt erzeugen: {e}"
+        return
+    update_entry(j["name"], label=title)
+    ss["title:" + j["name"]] = title
+    keep_visible({**j, "label": title})

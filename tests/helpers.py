@@ -106,11 +106,19 @@ def new_app(tab=None):
     return at
 
 
-def new_openai_app(tab=None):
-    """Wie new_app(), aber mit OpenAI als Anbieter für neue Anfragen. Ein Gemini-Client wird dabei nie gebaut."""
+def new_openai_app(tab=None, auto_name=False):
+    """Wie new_app(), aber mit OpenAI als Anbieter für neue Anfragen. Ein Gemini-Client wird dabei nie gebaut: Die
+    Namensvergabe (sie nutzt immer Gemini) ist aus, außer ein Test schaltet sie mit auto_name=True ein."""
     at = new_app(tab)
     at.session_state["provider"] = PROVIDER_OPENAI
+    at.session_state["auto_name"] = auto_name
     return at
+
+
+def sent_to_browser(widget, expected):
+    """Der Wert steht im Backend und geht beim Zeichnen mit set_value an den Browser."""
+    assert widget.value == expected
+    assert widget.proto.set_value is True, f"{widget.key}: Der Browser würde das Feld mit dem Standardwert aufbauen"
 
 
 def captions(at):

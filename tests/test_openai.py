@@ -14,7 +14,7 @@ import helpers
 from fakes import FakeGemini, FakeOpenAI, OpenAIError, install, install_openai, make_openai_body
 from helpers import (APP_PATH, MODE_BATCH, PROVIDER_GEMINI, PROVIDER_OPENAI, TAB_JOBS, TAB_NEW, batch_entry, button,
                      captions, click, finished_batch, finished_openai_batch, markdown, new_app, new_openai_app,
-                     openai_entry, read_history, set_prompts, write_history)
+                     openai_entry, read_history, sent_to_browser, set_prompts, write_history)
 
 ui = pytest.mark.ui
 PDF = "application/pdf"
@@ -329,7 +329,8 @@ def test_openai_shows_its_own_defaults_and_no_mode_switch(use_openai):
     assert not [s for s in at.selectbox if s.key == "think"]
     assert any("nur der Batch-Modus" in c and "„Hintergrund“ ist Gemini vorbehalten" in c for c in captions(at))
     assert button(at, "Batch starten").disabled and not [b for b in at.button if b.label == "Im Hintergrund starten"]
-    assert at.text_input(key="label_openai").value.startswith("openai-")
+    name_field = at.text_input(key="label_openai")  # ohne Namensvergabe zeigt der Platzhalter den Standardnamen
+    assert name_field.value == "" and name_field.placeholder.startswith("openai-")
 
 
 @ui
@@ -390,12 +391,6 @@ def test_a_missing_openai_package_is_reported_instead_of_crashing(monkeypatch):
 # Streamlit vergisst den Wert eines Widgets, das einen Lauf lang fehlt, und der Browser baut es dann mit dem Standardwert
 # neu auf (Modellfeld leer, Token-Limit 256, Denktiefe „Standard“). AppTest sieht nur den Wert im Backend, der stimmt
 # auch ohne Gegenmaßnahme. Darum prüfen diese Tests, was die App dem Browser schickt: set_value samt Wert im Protokoll.
-def sent_to_browser(widget, expected):
-    """Der Wert steht im Backend und geht beim Zeichnen mit set_value an den Browser."""
-    assert widget.value == expected
-    assert widget.proto.set_value is True, f"{widget.key}: Der Browser würde das Feld mit dem Standardwert aufbauen"
-
-
 @ui
 def test_the_default_model_is_shown_again_after_a_visit_to_openai_without_its_key(use_gemini, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "")  # mit leerem Key endet der OpenAI-Lauf hinter der Seitenleiste (st.stop)
@@ -499,7 +494,8 @@ def test_every_form_widget_with_a_key_is_kept_alive_between_runs(app):
     exempt = {"provider": "steht vor jedem st.stop() und fehlt nie",
               "view": "der Tab-Zustand hält Streamlit selbst",
               "sel": "Auswahl im Jobs-Tab: Ihre Optionen ändern sich, ein alter Wert wäre dort ungültig",
-              "label_": "Namensfeld je Modus: hat selbst einen Standardwert (neuer Name), ein Verlust schadet nicht"}
+              "label_": "Namensfeld je Modus: leer ist der Standardwert (neuer Name), ein Verlust schadet nicht",
+              "jobs_search": "Suchfeld im Jobs-Tab: leer ist der Standardwert, ein verlorener Suchtext schadet nicht"}
     assert used - set(exempt) == set(app.FORM_KEYS), "FORM_KEYS und die Schlüssel der Formularfelder weichen ab"
 
 
