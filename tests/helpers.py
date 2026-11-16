@@ -6,8 +6,8 @@ from streamlit.testing.v1 import AppTest
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = ROOT / "src"
-APP_PATH = SRC_DIR / "gemini_batch_ui.py"  # Hauptskript: nur die Oberfläche
-PACKAGE = "gbui"  # die Logik ohne Oberfläche, nach Thema in Module geteilt
+APP_PATH = SRC_DIR / "ai_batch_ui.py"  # Hauptskript: nur die Oberfläche
+PACKAGE = "aibui"  # die Logik ohne Oberfläche, nach Thema in Module geteilt
 PACKAGE_DIR = SRC_DIR / PACKAGE
 SOURCE_FILES = [APP_PATH, *sorted(PACKAGE_DIR.glob("*.py"))]  # aller Quelltext der App
 

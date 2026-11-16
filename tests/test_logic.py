@@ -115,15 +115,15 @@ def test_base_dir_prefers_environment_variable(app, home):
 
 
 def test_base_dir_defaults_to_the_project_folder_above_src(app, monkeypatch):
-    monkeypatch.delenv("GEMINI_UI_HOME")
-    assert app._base_dir() == helpers.ROOT  # das Paket gbui liegt in <Projektordner>/src/
+    monkeypatch.delenv("AI_BATCH_UI_HOME")
+    assert app._base_dir() == helpers.ROOT  # das Paket aibui liegt in <Projektordner>/src/
 
 
 def test_base_dir_for_other_file_locations(app, monkeypatch, tmp_path):
-    monkeypatch.delenv("GEMINI_UI_HOME")
-    config = app.modules["config"]  # sein Ort bestimmt den Projektordner; gbui liegt neben dem Hauptskript
-    in_src = tmp_path / "projekt" / "src" / "gbui" / "config.py"  # Ordner „src“: der Ordner darüber
-    flat = tmp_path / "flach" / "gbui" / "config.py"  # älteres, flaches Layout: der Ordner mit gbui
+    monkeypatch.delenv("AI_BATCH_UI_HOME")
+    config = app.modules["config"]  # sein Ort bestimmt den Projektordner; aibui liegt neben dem Hauptskript
+    in_src = tmp_path / "projekt" / "src" / "aibui" / "config.py"  # Ordner „src“: der Ordner darüber
+    flat = tmp_path / "flach" / "aibui" / "config.py"  # älteres, flaches Layout: der Ordner mit aibui
     monkeypatch.setattr(config, "__file__", str(in_src))
     assert app._base_dir() == (tmp_path / "projekt").resolve()
     monkeypatch.setattr(config, "__file__", str(flat))

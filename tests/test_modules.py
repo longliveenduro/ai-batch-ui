@@ -1,4 +1,4 @@
-"""Prüft den Aufbau des Pakets gbui: Jedes Modul lässt sich für sich importieren (also keine Importzyklen), keines
+"""Prüft den Aufbau des Pakets aibui: Jedes Modul lässt sich für sich importieren (also keine Importzyklen), keines
 importiert das Hauptskript, und auf Modulebene steht kein Streamlit-Aufruf. Module laufen nur beim ersten Import, das
 Hauptskript dagegen bei jedem Rerun."""
 import ast
@@ -33,7 +33,7 @@ def test_modules_never_import_the_main_script():
                 imported = {node.module.split(".")[0]}
             else:
                 continue
-            if "gemini_batch_ui" in imported:
+            if "ai_batch_ui" in imported:
                 offenders.append(f"{name}.py Zeile {node.lineno}")
     assert not offenders, f"Die Logik darf das Hauptskript nicht importieren: {offenders}"
 

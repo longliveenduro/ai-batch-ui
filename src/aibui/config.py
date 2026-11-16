@@ -1,6 +1,6 @@
 """Konstanten der App und die Ordner conf/ und data/. Was mehrere Module brauchen, steht hier.
 
-Die Pfade (BASE, CONF_DIR, DATA_DIR usw.) werden beim ersten Import berechnet: aus GEMINI_UI_HOME, sonst aus dem Ort
+Die Pfade (BASE, CONF_DIR, DATA_DIR usw.) werden beim ersten Import berechnet: aus AI_BATCH_UI_HOME, sonst aus dem Ort
 dieses Pakets (der Ordner über src/).
 """
 import os
@@ -10,14 +10,14 @@ from pathlib import Path
 
 
 def _base_dir():
-    """Projektordner, in dem conf/ und data/ liegen: GEMINI_UI_HOME, sonst der Ordner über src/.
-    Das Paket gbui liegt neben dem Hauptskript. Steht es in keinem Ordner namens src, ist es der Ordner, der das
+    """Projektordner, in dem conf/ und data/ liegen: AI_BATCH_UI_HOME, sonst der Ordner über src/.
+    Das Paket aibui liegt neben dem Hauptskript. Steht es in keinem Ordner namens src, ist es der Ordner, der das
     Paket enthält (älteres, flaches Layout)."""
-    home = os.getenv("GEMINI_UI_HOME")
+    home = os.getenv("AI_BATCH_UI_HOME")
     if home:
         return Path(home).expanduser().resolve()
     try:
-        app_dir = Path(__file__).resolve().parent.parent  # der Ordner mit dem Paket gbui, also der des Hauptskripts
+        app_dir = Path(__file__).resolve().parent.parent  # der Ordner mit dem Paket aibui, also der des Hauptskripts
     except NameError:  # ohne __file__ (z. B. interaktiv oder per exec)
         return Path.cwd()
     return app_dir.parent if app_dir.name == "src" else app_dir

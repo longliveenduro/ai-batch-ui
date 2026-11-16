@@ -1,4 +1,4 @@
-"""Logik der App ohne die Oberfläche (die steht in src/gemini_batch_ui.py), nach Thema in Module geteilt.
+"""Logik der App ohne die Oberfläche (die steht in src/ai_batch_ui.py), nach Thema in Module geteilt.
 
 Ein Modul importiert nur Module, die in dieser Liste über ihm stehen. So bleibt die Reihenfolge ohne Zyklen:
 
