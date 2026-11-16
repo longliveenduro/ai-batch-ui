@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pytest
 
 from fakes import ApiError, FakeGemini, InteractionsError, install, make_interaction
-from helpers import (MODE_BATCH, MODE_BG, TAB_JOBS, TAB_NEW, background_entry, batch_entry, button, captions, click,
-                     finished_background, markdown, new_app, read_history, row, set_prompts,
+from helpers import (MODE_BATCH, MODE_BG, PROVIDER_GEMINI, TAB_JOBS, TAB_NEW, background_entry, batch_entry, button,
+                     captions, click, finished_background, markdown, new_app, read_history, row, set_prompts,
                      write_history)
 
 pytestmark = pytest.mark.usefixtures("fake_time")  # Wiederholungspausen kosten keine Zeit
@@ -69,6 +69,7 @@ def test_start_stores_the_entry_with_the_interaction_ids(app, rt, home):
     fake = FakeGemini()
     entry = start(app, rt, fake, ["P1", "P2"], n_pdfs=2, system="Kurz.", think="low", max_out=131072)
     assert entry["name"].startswith("bg-") and entry["mode"] == "background" and entry["label"] == "lang"
+    assert entry["provider"] == PROVIDER_GEMINI  # Pflichtfeld, auch bei Gemini
     assert entry["interactions"] == dict(zip(["prompt-1", "prompt-2"], IDS))
     assert entry["prompts"] == {"prompt-1": "P1", "prompt-2": "P2"} and entry["pdfs"] == ["A.pdf", "B.pdf"]
     assert entry["pdf"] == "A.pdf, B.pdf" and entry["max_out"] == 131072 and entry["think"] == "low"
@@ -310,7 +311,8 @@ def test_background_start_sends_the_pdfs_and_stores_the_entry(use_fake, home, ap
     assert first["system_instruction"] == "Sei kurz." and first["background"] is True
     assert first["generation_config"] == {"max_output_tokens": 262144, "thinking_level": "high"}
     entry = read_history(home)[0]
-    assert entry["mode"] == "background" and entry["pdf"] == "Buch 1.pdf, Buch 2.pdf" and "state" not in entry
+    assert entry["provider"] == PROVIDER_GEMINI and entry["mode"] == "background"
+    assert entry["pdf"] == "Buch 1.pdf, Buch 2.pdf" and "state" not in entry
     assert entry["interactions"] == dict(zip(["prompt-1", "prompt-2"], IDS))
     assert at.session_state["sel"] == app.entry_label(entry)  # der neue Eintrag ist im Jobs-Tab vorausgewählt
 

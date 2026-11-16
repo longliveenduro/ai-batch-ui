@@ -793,3 +793,4 @@ def test_gemini_entries_of_older_versions_still_open_next_to_openai_entries(use_
     assert not at.exception and not at.error
     assert any(o.startswith("altbatch") for o in at.selectbox(key="sel").options)
     assert any(o.startswith("openai-batch") for o in at.selectbox(key="sel").options)
+    assert [e["provider"] for e in read_history(home)] == [PROVIDER_OPENAI, PROVIDER_GEMINI]  # ergänzt beim Start

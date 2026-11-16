@@ -239,7 +239,7 @@ Die **Cache-Strategie** (Reihenfolge `[Systemanweisung] [PDF 1] [PDF 2] … [Pro
 |---|---|---|
 | `DEFAULT_MODEL` | `gemini-4-carbon` | Voreinstellung Modell |
 | `DEFAULT_OPENAI_MODEL` | `gpt-6-astra` | Voreinstellung Modell bei OpenAI |
-| `PROVIDER_GEMINI`, `PROVIDER_OPENAI` | „Gemini“, „OpenAI“ | Anbieter. `PROVIDER_OPENAI` steht auch im Feld `provider` der OpenAI-Einträge |
+| `PROVIDER_GEMINI`, `PROVIDER_OPENAI` | „Gemini“, „OpenAI“ | Anbieter. Beide stehen im Pflichtfeld `provider` der Verlaufseinträge |
 | `PROVIDERS` | beide Anbieter | Auswahl in der Seitenleiste, Voreinstellung ist der erste |
 | `BASE` | Projektordner: Ordner über `src/` (liegt das Paket `aibui` in keinem Ordner namens `src`, der Ordner mit dem Paket), oder `AI_BATCH_UI_HOME` | Wurzel für `conf/` und `data/` (`_base_dir()`) |
 | `CONF_DIR` | `BASE/conf` | Zugangsdaten, geheim |
@@ -366,11 +366,12 @@ __pycache__/
 
 ### `data/batch_jobs.json`: Liste von Einträgen, neueste zuerst
 
-Batch-Eintrag (Felder `state`, `rows`, `error`, `api_model` kommen erst, wenn der Batch einen Endzustand hat):
+Batch-Eintrag (Felder `state`, `rows`, `error`, `api_model` kommen erst, wenn der Batch einen Endzustand hat. `provider` ist ein Pflichtfeld, siehe unten):
 
 ```json
 {
   "name": "batches/9bo5q27hzqyh6unvm1z9slccnav15hnkybmy",
+  "provider": "Gemini",
   "label": "batch-20261019-1437",
   "model": "gemini-4-carbon",
   "pdf": "Buch 1.pdf, Buch 2.pdf",
@@ -387,7 +388,7 @@ Batch-Eintrag (Felder `state`, `rows`, `error`, `api_model` kommen erst, wenn de
 }
 ```
 
-OpenAI-Eintrag (nur Batch): dieselben Felder, dazu `provider` (nur bei OpenAI vorhanden). `name` ist die Batch-ID, `state` der Status der Batch API in Kleinbuchstaben (`completed`, `failed`, `expired`, `cancelled`), `api_model` der von OpenAI gemeldete Modellname:
+OpenAI-Eintrag (nur Batch): dieselben Felder, `provider` ist hier `OpenAI`. `name` ist die Batch-ID, `state` der Status der Batch API in Kleinbuchstaben (`completed`, `failed`, `expired`, `cancelled`), `api_model` der von OpenAI gemeldete Modellname:
 
 ```json
 {
@@ -402,13 +403,16 @@ OpenAI-Eintrag (nur Batch): dieselben Felder, dazu `provider` (nur bei OpenAI vo
 }
 ```
 
-Die übrigen Felder (`pdf`, `pdfs`, `prompts`, `system`, `created`, `rows`, `error`) sind wie beim Batch-Eintrag oben. Fehlt `provider`, gilt der Eintrag als Gemini-Eintrag (`entry_provider()`).
+Die übrigen Felder (`pdf`, `pdfs`, `prompts`, `system`, `created`, `rows`, `error`) sind wie beim Batch-Eintrag oben.
+
+**`provider` ist ein Pflichtfeld** (Issue #8): `Gemini` (`PROVIDER_GEMINI`) oder `OpenAI` (`PROVIDER_OPENAI`), in Batch-, Hintergrund- und OpenAI-Einträgen. Neue Einträge schreiben es immer. Ältere Einträge ohne das Feld stammen alle von Gemini (auch die älteren synchronen): `migrate_history()` ergänzt dort beim Start einer Sitzung `provider: Gemini` und schreibt `data/batch_jobs.json` dafür einmal neu (Hinweis im Terminal und als Toast). Gibt es keinen solchen Eintrag, bleibt die Datei unberührt. Sonst ändert sich an den Einträgen nichts, und ein anderer Wert im Feld bleibt stehen. Fehlt das Feld trotzdem (z. B. weil mitten in der Sitzung eine ältere Datei zurückgespielt wurde), gilt der Eintrag als Gemini-Eintrag (`entry_provider()`), bis die nächste Sitzung es ergänzt.
 
 Älterer synchroner Eintrag (den Modus gibt es nicht mehr, vorhandene Einträge bleiben les- und löschbar. Seine Zeilen wuchsen live):
 
 ```json
 {
   "name": "sync-20261028-143015-3f9a",
+  "provider": "Gemini",
   "mode": "sync",
   "state": "RUNNING",
   "label": "sync-20261028-1430",
@@ -432,6 +436,7 @@ Hintergrund-Eintrag (die Felder `state`, `rows`, `error`, `api_model` kommen ers
 ```json
 {
   "name": "bg-20261112-230500-3f9a",
+  "provider": "Gemini",
   "mode": "background",
   "label": "background-20261112-2305",
   "model": "gemini-4-carbon",
@@ -472,7 +477,7 @@ Eine Zeile in `rows` (alle Modi und Anbieter, erzeugt von `parse_line()`, bei Op
 
 `label` ist der Name des Eintrags: eingetippt, aus dem Prompt erzeugt oder der Standardname `<Art>-<Datum>-<Uhrzeit>`. `description` ist eine freie Beschreibung. Sie fehlt, bis im Tab „Jobs und Ergebnisse“ einmal „Speichern“ geklickt wurde (leer ist erlaubt). Beide ändert nur dieser Tab, der Anbieter behält den Namen vom Start.
 
-Ältere Einträge können Felder nicht haben (`system`, `pdfs`, `think`, `group`, `description`, `state`, `rows` …). Neue Felder deshalb **immer optional** lesen (`.get()`).
+Ältere Einträge können Felder nicht haben (`system`, `pdfs`, `think`, `group`, `description`, `state`, `rows` …). Neue Felder deshalb **immer optional** lesen (`.get()`). Ausnahme beim Schreiben ist `provider`: Es ist Pflicht (siehe oben). Gelesen wird es trotzdem mit `.get()` (`entry_provider()`), als Sicherheitsnetz.
 
 ### `data/pdf_files.json`
 
@@ -559,7 +564,7 @@ Ein Modul von `aibui` importiert nur Module, die in dieser Tabelle über ihm ste
 | Datei | Inhalt |
 |---|---|
 | `src/aibui/config.py` | Konstanten (siehe 6.2), `_base_dir()` (Wurzel), `prepare_folders()` (legt `conf/` und `data/` an, übernimmt Altbestand) |
-| `src/aibui/history.py` | `runtime()` (prozessweit: `lock`, die Sperre für den Verlauf), `load_jobs()`, `mutate_jobs(lock, change)` |
+| `src/aibui/history.py` | `runtime()` (prozessweit: `lock`, die Sperre für den Verlauf), `load_jobs()`, `mutate_jobs(lock, change)`, `migrate_history(lock)` (ergänzt beim Start das Pflichtfeld `provider` in älteren Einträgen) |
 | `src/aibui/rows.py` | die gemeinsame Zeilenform: `pick()`, `parse_line()`, `parse_results()` (mit wählbarem Zeilenleser), für den Hintergrund-Modus `as_dict()` und `parse_interaction()` |
 | `src/aibui/drive.py` | `drive_service()` (OAuth, Neuanmeldung bei `RefreshError`), `drive_id()` (ID aus Link), `drive_fetch()` (PDF laden/exportieren) |
 | `src/aibui/gemini.py` | `upload_pdf()` (Files API + `data/pdf_files.json`), `start_batch()` (JSONL bauen, hochladen, `batches.create`) |
@@ -581,7 +586,7 @@ Formular ──► Dateien sammeln (Upload, Drive) ──► Duplikate per SHA-2
          ──► upload_pdf() je PDF: Files API (wiederverwendet über data/pdf_files.json)
          ──► start_batch(): JSONL (key + request je Prompt) in data/requests_<ts>.jsonl,
              JSONL per Files API hochladen (mime_type "jsonl"), client.batches.create(model, src)
-         ──► Verlaufseintrag (ohne state) in data/batch_jobs.json
+         ──► Verlaufseintrag (provider Gemini, ohne state) in data/batch_jobs.json
 Jobs-Tab ──► Fragment alle 10 s: refresh() → client.batches.get(name)
          ──► bei JOB_STATE_SUCCEEDED: client.files.download(dest.file_name) → parse_results() → rows
          ──► Endzustand (state, rows, error, api_model) in den Eintrag schreiben → ab da kein Abruf mehr nötig
@@ -609,7 +614,7 @@ Formular ──► Dateien sammeln, upload_pdf() je PDF (wie beim Batch)
          ──► start_background(): je Prompt client.interactions.create(model, input=[PDFs als document + uri, Prompt],
              generation_config={max_output_tokens, thinking_level}, background=True, store=True)
              → Interaktions-ID. Scheitert einer, werden die schon gestarteten abgebrochen.
-         ──► Verlaufseintrag (mode background, interactions {Schlüssel: ID}, ohne state) in data/batch_jobs.json
+         ──► Verlaufseintrag (provider Gemini, mode background, interactions {Schlüssel: ID}, ohne state) in data/batch_jobs.json
 Jobs-Tab ──► Fragment alle 10 s: refresh() → fetch_background() → client.interactions.get(id) je Prompt
              (Zeilen aus der letzten Abfrage bleiben stehen, beendete Interaktionen werden nicht erneut geladen)
          ──► beendet (alles außer in_progress/queued): parse_interaction() → Zeile. Text = alle model_output-Schritte
@@ -630,6 +635,18 @@ Start    ──► Feld „Name“ leer, Namensvergabe an und Gemini API-Key da?
 Jobs-Tab ──► Popover „Name und Beschreibung“: save_details() bzw. generate_title() ändern label und description
              nur in data/batch_jobs.json (unter der Sperre, auf dem frischen Stand der Datei), setzen sel auf den
              neuen Namen und leeren jobs_search, falls der Eintrag nicht mehr zur Suche passt
+```
+
+### Datenfluss Verlauf beim Start
+
+```text
+Sitzung  ──► prepare_folders(): Altbestand aus dem Projektordner nach conf/ und data/ verschieben
+         ──► migrate_history() (einmal je Sitzung, Merker history_checked, noch vor dem Prüfen des API-Keys):
+             load_jobs() prüft, ob Einträge ohne provider da sind
+             nein: nichts wird geschrieben
+             ja:   mutate_jobs() setzt provider = Gemini bei jedem Eintrag ohne das Feld (unter der Sperre, auf dem
+                   frischen Stand der Datei) und schreibt atomar zurück. Hinweis im Terminal und als Toast
+             Scheitert das Schreiben (Schreibschutz, gesperrte Datei): Warnung statt Abbruch, die App läuft weiter
 ```
 
 ### Streamlit-Besonderheiten, die man kennen muss
@@ -658,6 +675,7 @@ Jobs-Tab ──► Popover „Name und Beschreibung“: save_details() bzw. gene
 | `jobs_search` | Suchfeld im Jobs-Tab. Der Start-Handler leert es, damit der neue Eintrag sichtbar ist, `keep_visible()` nach dem Umbenennen, wenn der Eintrag nicht mehr passt |
 | `sel` | Auswahl im Jobs-Tab (Wert = `entry_label(eintrag)`). Der Start-Handler setzt ihn auf den neuen Eintrag |
 | `drive_pdfs` | `{Anzeigename: Drive-ID}` der geladenen Drive-Liste |
+| `history_checked` | Merker: Der Verlauf wurde in dieser Sitzung schon auf ältere Einträge ohne `provider` geprüft (`migrate_history()` läuft einmal je Sitzung) |
 | `reused_note` | einmaliger Hinweis nach „Eingaben übernehmen“ und „Gespräch fortsetzen“ (wird beim Anzeigen entfernt) |
 | `name_note` | einmaliger Hinweis über der Liste im Jobs-Tab, wenn „Name aus dem Prompt erzeugen“ scheiterte (wird beim Anzeigen entfernt) |
 | `title:<name>`, `descr:<name>` | Felder „Name“ und „Beschreibung“ im Popover „Name und Beschreibung“ je Eintrag (Voreinstellung per `setdefault` aus dem Eintrag, die Callbacks setzen sie nach dem Speichern) |
@@ -673,7 +691,7 @@ Jobs-Tab ──► Popover „Name und Beschreibung“: save_details() bzw. gene
 
 1. **Erst diese Datei lesen**, dann das Hauptskript `src/ai_batch_ui.py` und das Modul in `src/aibui/`, das zum Thema passt (Landkarte in Abschnitt 8). Kleine, gezielte Änderungen statt Umbauten. Logik gehört in ein Modul von `aibui`, das Hauptskript bleibt die Oberfläche. Ein neues Thema bekommt ein neues Modul, eingetragen in der Landkarte und in der Liste in `src/aibui/__init__.py`. Ein Modul importiert nur Module, die in dieser Liste über ihm stehen. Wächst eine Datei deutlich über etwa 1.000 Zeilen, wird sie nach Thema geteilt (Importe werden gecacht, nur das Hauptskript läuft bei jedem Rerun neu).
 2. **Prefix stabil halten** (Abschnitt 5). Alles, was vor oder zwischen den PDFs steht, beeinflusst die Cache-Trefferquote.
-3. **Verlauf nur über `mutate_jobs`** schreiben, nie `data/batch_jobs.json` direkt. Lesen mit `load_jobs()`. Neue Eintragsfelder optional (`.get()`), weil alte Einträge sie nicht haben.
+3. **Verlauf nur über `mutate_jobs`** schreiben, nie `data/batch_jobs.json` direkt. Lesen mit `load_jobs()`. Neue Eintragsfelder optional (`.get()`), weil alte Einträge sie nicht haben. Ausnahme ist `provider`: Jeder neue Eintrag bekommt es (Abschnitt 7).
 4. **Zeilenform nur in `parse_line()`, `parse_openai_line()` und `parse_interaction()` ändern** und dort neue Felder ergänzen (alle drei liefern dieselbe Form). Anzeige in `show_rows()`. Alle Modi und Anbieter nutzen dieselbe Zeilenform, und gespeicherte Zeilen alter Läufe haben neue Felder nicht (`.get()`).
 5. **Lange Arbeit nicht im Hauptskript abwarten.** Alles im Hauptskript kann durch einen Tab-Wechsel unterbrochen werden. Der Start-Handler legt die Arbeit beim Anbieter nur an (Batch oder Hintergrund-Interaktion) und speichert einen Verlaufseintrag, das Polling-Fragment fragt den Stand ab (Muster: `start_background` → `fetch_background` → `job_panel`).
 6. **Widgets, die per Code gesetzt werden sollen, brauchen einen `key`.** Voreinstellung über `st.session_state.setdefault(key, wert)` setzen und dem Widget kein `value=`/`index=` mitgeben (sonst Streamlit-Warnung). Widget-Zustand nur **vor** dem Erzeugen des Widgets im selben Lauf ändern (in Callbacks oder weiter oben im Skript), danach gibt es eine Ausnahme. Ein neues Formularfeld mit Schlüssel gehört außerdem in `FORM_KEYS`, sonst vergisst Streamlit seinen Wert, sobald es einen Lauf lang fehlt. Ein Test erinnert daran.
@@ -704,7 +722,7 @@ Jobs-Tab ──► Popover „Name und Beschreibung“: save_details() bzw. gene
 
 1. Konstante `PROVIDER_…` und Eintrag in `PROVIDERS` (`config.py`), der Client in `make_client()` (`providers.py`).
 2. Ein neues Modul nach dem Muster von `openai_batch.py` (Upload, Start, Zeilen lesen, Status holen), eingetragen in der Landkarte und in `src/aibui/__init__.py`. Der Zeilenleser muss die Form von `parse_line()` liefern, dann laufen Anzeige, Download und „Gespräch fortsetzen“ unverändert.
-3. Eintrag mit Feld `provider` speichern. `entry_provider()`, `refresh()`, `cancel_batch()` (alle in `providers.py`), `fill_form()` (`forms.py`) und die Formularzweige im Hauptskript erweitern, die Endzustände des Anbieters in `DONE` aufnehmen.
+3. Eintrag mit dem Pflichtfeld `provider` (Konstante des Anbieters) speichern. `entry_provider()`, `refresh()`, `cancel_batch()` (alle in `providers.py`), `fill_form()` (`forms.py`) und die Formularzweige im Hauptskript erweitern, die Endzustände des Anbieters in `DONE` aufnehmen.
 4. Einen Fake mit echten SDK-Objekten nach dem Muster von `FakeOpenAI` bauen und Tests schreiben (9.3).
 
 **Aufbau des Verlaufstexts ändern** (Einleitung, Marken, Beschriftung): `TALK_*` anpassen. `TALK_MARK` muss zu den Marken passen, `test_every_mark_constant_is_recognized_by_the_mark_pattern` meldet Abweichungen. Bereits gesendete Prompts bleiben nur dann „abflachbar“, wenn ihre Marken noch erkannt werden. Sonst gelten sie als gewöhnliche Prompts.
@@ -723,7 +741,7 @@ Die Testsuite liegt in `tests/` und braucht weder Internet noch API-Key. Alle Go
 
 ```bash
 pip install -r requirements-dev.txt        # installiert zusätzlich pytest
-pytest                                     # alle Tests (rund 320, etwa 40 Sekunden)
+pytest                                     # alle Tests (rund 340, etwa 40 Sekunden)
 pytest -m "not ui"                         # nur die schnellen Tests ohne Oberfläche (unter 2 Sekunden)
 pytest tests/test_background.py -k cancel  # einzelne Datei oder Namensausschnitt
 ```
@@ -736,10 +754,10 @@ pytest tests/test_background.py -k cancel  # einzelne Datei oder Namensausschnit
 | `tests/conftest.py` | Fixtures: `home` (Wegwerf-Ordner als `AI_BATCH_UI_HOME`, Dummy-Keys für beide Anbieter), `fresh_package` (importiert die Module von `aibui` in jedem Test neu, weil sie ihre Ordner beim Import aus `AI_BATCH_UI_HOME` berechnen), `app` (alle Module von `aibui` als ein Objekt), `rt` (Ersatz für `runtime()`), `fake_time` (keine echten Pausen, in allen Modulen). Dazu eine Sperre gegen echte API-Zugriffe und ein Sicherheitsnetz: ändert ein Test `conf/` oder `data/` im Projektordner, schlägt der Lauf am Ende fehl |
 | `tests/fakes.py` | `FakeGemini` (Files API, Batch-API, Interactions API mit `create`, `get` und `cancel`, `models.generate_content` für die Namen, zeichnet Aufrufe auf), `make_interaction` (echte SDK-Interaktion), `make_name_response` (echte SDK-Antwort von `generate_content`), `ApiError`, `InteractionsError`, `FakeDrive`, `install`, `install_drive`. Für OpenAI: `FakeOpenAI` (Files API und Batch API, liefert echte SDK-Objekte `Batch` und `FileObject`), `make_openai_body` (Antwortrumpf wie in der Ausgabedatei), `OpenAIError`, `install_openai` |
 | `tests/helpers.py` | Verlauf lesen und schreiben, Eintrags-Vorlagen (`batch_entry`, `sync_entry`, `background_entry`, `finished_batch`, `finished_background`, `openai_entry`, `finished_openai_batch`, `row`), AppTest-Kürzel (`new_app`, `new_openai_app`, `click`, `set_prompts`, `captions`, `markdown`, `sent_to_browser`) |
-| `tests/test_logic.py` | reine Logik: Parser, Hilfsfunktionen, Ordner und Altbestand, Verlaufsdatei, PDF-Upload, Batch-Anfragen, Gesprächsverlauf als Text (Aufbau, Wiedereinlesen, mehrfaches Fortsetzen) |
+| `tests/test_logic.py` | reine Logik: Parser, Hilfsfunktionen, Ordner und Altbestand, Verlaufsdatei (auch das Ergänzen des Pflichtfelds `provider`), PDF-Upload, Batch-Anfragen, Gesprächsverlauf als Text (Aufbau, Wiedereinlesen, mehrfaches Fortsetzen) |
 | `tests/test_background.py` | Hintergrund-Modus: Anfrageaufbau (auch gegen das Schema des SDK), Start mit Wiederholung und Aufräumen bei Fehlern, Abfrage (laufend, beendet, `incomplete`, `failed`, `cancelled`, Long-Decode-Schritte), Abbruch, Zeilenparser, Oberfläche (Formular, Start, Jobs-Tab, Übernehmen, Hinweis bei abgeschnittenem Batch; Oberflächentests mit Marker `ui`) |
 | `tests/test_drive.py` | Drive-Anmeldung (Token, Neuanmeldung, Netzwerkfehler) und Laden von Dateien |
-| `tests/test_ui.py` | Oberfläche mit AppTest: Formular, Starts, Jobs-Tab, automatische Prüfung, Übernehmen, Löschen, Altbestand (auch ältere synchrone Einträge), Ordnerlage, Prompt-Anzeige, Gespräch fortsetzen (Marker `ui`) |
+| `tests/test_ui.py` | Oberfläche mit AppTest: Formular, Starts, Jobs-Tab, automatische Prüfung, Übernehmen, Löschen, Altbestand (auch ältere synchrone Einträge) und Ergänzen von `provider` beim Start, Ordnerlage, Prompt-Anzeige, Gespräch fortsetzen (Marker `ui`) |
 | `tests/test_openai.py` | OpenAI-Anbindung: Anfrageaufbau, PDF-Upload, Ergebniszeilen, Status und Ergebnisdateien, Anbieter-Schalter, Formularwerte beim Anbieterwechsel (was die App dem Browser schickt), Start, Jobs-Tab, Übernehmen, Fortsetzen. Ein Test prüft, dass die Beispielantworten des Fakes gültige Objekte des SDK sind (Oberflächentests mit Marker `ui`) |
 | `tests/test_naming.py` | Namen und Suche: Text für das Modell, Bereinigung der Antwort, Aufruf von `generate_content` (Modell, Denktiefe, Zeitlimit), Fallback auf den Standardnamen bei Fehlern und ohne Key, Suche, Dateiname; Oberfläche: Start in allen Modi und auch bei OpenAI, Einstellungen der Seitenleiste, Suche im Jobs-Tab, Name und Beschreibung ändern, Name aus dem Prompt erzeugen (Oberflächentests mit Marker `ui`) |
 | `tests/test_modules.py` | Aufbau des Pakets `aibui`: jedes Modul lässt sich einzeln importieren (keine Importzyklen), keines importiert das Hauptskript, auf Modulebene steht kein Streamlit-Aufruf |
@@ -845,6 +863,8 @@ Die Datei `.github/workflows/tests.yml` führt die Testsuite auf GitHub aus, ohn
 | OpenAI: Fehler je Prompt zu `reasoning.effort` | Das Modell kennt die gewählte Denktiefe nicht (z. B. `none` bei `gpt-6-astra`) | Andere Stufe oder „Standard“ wählen und neu starten (Eingaben übernehmen). |
 | OpenAI-Batch endet mit `failed`, die Meldung nennt ein Token-Limit | Die Summe der Token aller eingereihten Batches überschreitet das Warteschlangenlimit des Modells | Weniger Prompts oder kürzere PDFs je Batch, warten bis andere Batches fertig sind, Limits der Kontostufe bei OpenAI prüfen. |
 | OpenAI-Batch `expired`, einzelne Prompts mit Fehler | Das Zeitfenster von 24 Stunden reichte nicht für alle Anfragen. Die fertigen Antworten sind geladen | Die fehlenden Prompts mit „Eingaben übernehmen“ erneut starten. |
+| Toast „Verlauf aktualisiert: Pflichtfeld provider (Gemini) bei älteren Einträgen ergänzt“ beim Start | Einträge in `data/batch_jobs.json` stammen von vor Issue #8 und hatten das Feld `provider` noch nicht | Erwartet, es passiert einmal. Die App ergänzt `provider: Gemini`, sonst bleibt alles gleich. |
+| Warnung „Der Verlauf (data/batch_jobs.json) ließ sich nicht aktualisieren“ beim Start | Das Ergänzen von `provider` scheiterte beim Schreiben, meist fehlen Schreibrechte oder ein anderes Programm sperrt die Datei (z. B. ein Sync-Dienst unter Windows). Die Meldung nennt den Grund | Rechte und Sperre prüfen, die Seite neu laden. Bis dahin läuft die App weiter, ältere Einträge gelten als Gemini-Einträge. |
 | `data/batch_jobs.defekt-<zahl>.json` taucht auf | `data/batch_jobs.json` war beschädigt, die App hat sie gesichert und neu begonnen | Sicherung prüfen, ggf. Einträge von Hand zurückkopieren. |
 | Verlauf leer nach dem Wechsel auf `conf/` und `data/` oder nach der Umbenennung (Issue #18) | Alte `batch_jobs.json` lag nicht im Projektordner, oder `AI_BATCH_UI_HOME` zeigt woanders hin bzw. ist nicht gesetzt (bis Issue #18 hieß die Variable `GEMINI_UI_HOME`, der alte Name gilt nicht mehr) | Datei von Hand nach `data/` kopieren bzw. `AI_BATCH_UI_HOME` prüfen. |
 | `ModuleNotFoundError: No module named 'aibui'` | Das Hauptskript steht ohne den Ordner `aibui/` daneben (z. B. nur die eine Datei kopiert) | Den Ordner `aibui/` neben `ai_batch_ui.py` legen und mit `streamlit run src/ai_batch_ui.py` starten (Abschnitt 7). |
@@ -943,7 +963,7 @@ OpenAI (Stand 10.11.2026, bitte auf Änderungen prüfen):
 
 ## Glossar
 
-- **Anbieter**: Gemini (Google) oder OpenAI. Jeder Verlaufseintrag gehört zu einem Anbieter (Feld `provider`, fehlt es, gilt Gemini).
+- **Anbieter**: Gemini (Google) oder OpenAI. Jeder Verlaufseintrag gehört zu einem Anbieter (Pflichtfeld `provider`: `Gemini` oder `OpenAI`).
 - **Responses API**: OpenAIs Schnittstelle für Textantworten. Die Batch API nimmt sie als Endpunkt `/v1/responses` und liefert Ausgabe- und Fehlerdatei.
 - **Prefix**: der gemeinsame Anfang zweier Anfragen. Implizites Caching greift darauf.
 - **Implizites Caching**: Google erkennt gleiche Anfänge automatisch und berechnet sie günstiger. Keine Zusage.

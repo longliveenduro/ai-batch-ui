@@ -34,7 +34,7 @@ from aibui.config import (BATCH_MAX_OUT, BG_DEFAULT_OUT, BG_MAX_OUT, DEFAULT_MOD
 from aibui.drive import drive_fetch, drive_id, drive_service
 from aibui.forms import delete_entry, entry_label, generate_title, reuse_inputs, save_details
 from aibui.gemini import start_batch, upload_pdf
-from aibui.history import load_jobs, mutate_jobs, runtime
+from aibui.history import load_jobs, migrate_history, mutate_jobs, runtime
 from aibui.naming import choose_label, default_label, search_jobs
 from aibui.openai_batch import start_openai_batch, upload_pdf_openai
 from aibui.providers import batch_info, entry_mode, entry_provider, make_client
@@ -47,6 +47,19 @@ moved = prepare_folders()
 if moved:
     print("Dateien einsortiert:", ", ".join(moved))
     st.toast("Dateien einsortiert: " + ", ".join(moved))
+if "history_checked" not in st.session_state:  # einmal je Sitzung: ältere Einträge bekommen das Pflichtfeld provider
+    st.session_state["history_checked"] = True
+    try:
+        added = migrate_history(runtime().lock)
+    except Exception as e:  # nichts bricht ab: Ohne das Feld gilt ein Eintrag als Gemini-Eintrag (entry_provider)
+        added = 0
+        print(f"Verlauf nicht aktualisiert: {e}")
+        st.warning(f"Der Verlauf (data/batch_jobs.json) ließ sich nicht aktualisieren: {e}. Die App läuft trotzdem, "
+                   "ältere Einträge gelten als Gemini-Einträge. Die Seite neu zu laden versucht es erneut.")
+    if added:
+        note = f"Verlauf aktualisiert: Pflichtfeld provider ({PROVIDER_GEMINI}) bei älteren Einträgen ergänzt ({added})"
+        print(note)
+        st.toast(note + ".")
 for key in FORM_KEYS:  # hält die Werte am Leben und schickt sie beim erneuten Zeichnen an den Browser
     if key in st.session_state:
         st.session_state[key] = st.session_state[key]
@@ -258,9 +271,10 @@ with tab_new:
                     mutate_jobs(rt.lock, lambda jobs: jobs.insert(0, entry))
                 else:
                     job, keyed = start_batch(client, model, pdfs, prompts, system.strip(), think, max_out, title)
-                    entry = {"name": job.name, "label": title, "model": model, "pdf": ", ".join(names) or None,
-                             "pdfs": names, "prompts": keyed, "system": system.strip(), "think": think,
-                             "max_out": int(max_out), "created": datetime.now().isoformat(timespec="seconds")}
+                    entry = {"name": job.name, "provider": PROVIDER_GEMINI, "label": title, "model": model,
+                             "pdf": ", ".join(names) or None, "pdfs": names, "prompts": keyed,
+                             "system": system.strip(), "think": think, "max_out": int(max_out),
+                             "created": datetime.now().isoformat(timespec="seconds")}
                     mutate_jobs(rt.lock, lambda jobs: jobs.insert(0, entry))
                 status.update(label="Gestartet", state="complete")
             st.session_state["sel"] = entry_label(entry)  # der neue Eintrag ist im Jobs-Tab vorausgewählt
