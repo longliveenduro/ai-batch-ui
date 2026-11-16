@@ -1,13 +1,14 @@
 """Oberflächentests mit Streamlits AppTest und Ersatzdiensten. Langsamer als die übrigen Tests (Marker „ui“)."""
+import os
 import shutil
 
 import pytest
 from streamlit.testing.v1 import AppTest
 
 from fakes import ApiError, FakeDrive, FakeGemini, install, install_drive
-from helpers import (APP_PATH, MODE_BATCH, MODE_BG, PACKAGE, PACKAGE_DIR, TAB_JOBS, TAB_NEW, batch_entry, button,
-                     captions, click, finished_batch, markdown, new_app, read_history, row, set_prompts, sync_entry,
-                     write_history)
+from helpers import (APP_PATH, MODE_BATCH, MODE_BG, PACKAGE, PACKAGE_DIR, PROVIDER_GEMINI, TAB_JOBS, TAB_NEW,
+                     background_entry, batch_entry, button, captions, click, finished_batch, history_path, markdown,
+                     new_app, read_history, row, set_prompts, sync_entry, write_history)
 
 pytestmark = pytest.mark.ui
 
@@ -84,6 +85,7 @@ def test_batch_start_sends_both_pdfs_and_stores_the_entry(use_fake, home, app):
     assert request["system_instruction"] == {"parts": [{"text": "Sei kurz."}]}
     assert request["generation_config"] == {"max_output_tokens": 32768, "thinking_config": {"thinking_level": "high"}}
     entry = read_history(home)[0]
+    assert entry["provider"] == PROVIDER_GEMINI  # Pflichtfeld, auch bei Gemini
     assert entry["pdf"] == "Buch 1.pdf, Buch 2.pdf" and entry["system"] == "Sei kurz." and "state" not in entry
     assert entry["prompts"] == {"prompt-1": "Erster Prompt", "prompt-2": "Zweiter Prompt"}
     assert at.session_state["sel"] == app.entry_label(entry)  # der neue Eintrag ist im Jobs-Tab vorausgewählt
@@ -377,6 +379,68 @@ def test_entries_from_older_versions_still_open(use_fake, home):
     at.run()
     assert not at.exception
     assert any("synchron, 2 Prompts pro Gespräch" in c for c in captions(at)) and "Alte Antwort" in markdown(at)
+
+
+# ---------- Verlauf: Pflichtfeld provider ----------
+def test_older_entries_get_the_provider_on_start(use_fake, home):
+    older = [finished_batch(name="batches/alt1", label="alt-eins"), background_entry(), sync_entry()]
+    write_history(home, older)  # alle im Format von vor Issue #8, ohne provider
+    use_fake()
+    at = new_app(TAB_JOBS)
+    at.run()
+    assert not at.exception and not at.error
+    assert read_history(home) == [{**e, "provider": PROVIDER_GEMINI} for e in older]  # nur das Pflichtfeld kommt dazu
+    assert any("Verlauf aktualisiert" in t.value and "(3)" in t.value for t in at.toast)
+
+
+def test_a_current_history_is_not_rewritten_on_start(use_fake, home):
+    write_history(home, [finished_batch(provider=PROVIDER_GEMINI)])
+    path = history_path(home)
+    long_ago = 1_000_000_000 * 10**9  # Nanosekunden: schon lange her, eine neue Schreibung fiele auf
+    os.utime(path, ns=(long_ago, long_ago))
+    use_fake()
+    at = new_app(TAB_JOBS)
+    at.run()
+    assert not at.exception and path.stat().st_mtime_ns == long_ago
+    assert not any("Verlauf aktualisiert" in t.value for t in at.toast)
+
+
+def test_the_history_is_updated_even_without_an_api_key(monkeypatch, home):
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    write_history(home, [finished_batch()])
+    at = new_app()
+    at.run()  # die App wartet auf den Key, der Verlauf ist aber schon ergänzt
+    assert not at.exception and any("API-Key" in i.value for i in at.info)
+    assert read_history(home)[0]["provider"] == PROVIDER_GEMINI
+
+
+def test_a_failing_history_update_does_not_stop_the_app(use_fake, home, monkeypatch):
+    older = [finished_batch()]
+    write_history(home, older)
+
+    def refuse(*args, **kwargs):
+        raise PermissionError("Zugriff verweigert")
+
+    monkeypatch.setattr(os, "replace", refuse)  # mutate_jobs scheitert beim Zurückschreiben
+    use_fake()
+    at = new_app(TAB_JOBS)
+    at.run()
+    assert not at.exception
+    assert any("nicht aktualisieren" in w.value and "Zugriff verweigert" in w.value for w in at.warning)
+    assert read_history(home) == older  # die Datei bleibt, wie sie war
+    assert any("Denktiefe high" in c for c in captions(at))  # der Eintrag öffnet sich trotzdem
+
+
+def test_the_history_is_checked_once_per_session(use_fake, home):
+    use_fake()
+    at = new_app(TAB_JOBS)
+    at.run()
+    write_history(home, [finished_batch()])  # eine ältere Datei, die mitten in der Sitzung zurückgespielt wird
+    at.run()
+    assert not at.exception and not at.error
+    assert "provider" not in read_history(home)[0]  # erst die nächste Sitzung ergänzt sie (kein Lesen bei jedem Lauf)
+    assert not any("Verlauf aktualisiert" in t.value for t in at.toast)
+    assert any("Denktiefe high" in c for c in captions(at))  # der Eintrag öffnet sich trotzdem: Rückfall auf Gemini
 
 
 # ---------- Jobs-Tab: ältere synchrone Einträge (den Modus gibt es nicht mehr) ----------

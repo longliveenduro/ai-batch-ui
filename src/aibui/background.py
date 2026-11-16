@@ -7,7 +7,7 @@ import time
 import uuid
 from datetime import datetime
 
-from .config import BG_RUNNING
+from .config import BG_RUNNING, PROVIDER_GEMINI
 from .history import mutate_jobs
 from .rows import as_dict, parse_interaction
 
@@ -79,10 +79,10 @@ def start_background(client, rt, model, pdfs, pdf_names, prompts, system, think,
             raise
         raise RuntimeError(f"Prompt {len(started) + 1} von {len(keyed)} ließ sich nicht starten ({e}). "
                            f"Die {len(started)} schon gestarteten Läufe wurden abgebrochen.") from e
-    entry = {"name": f"bg-{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:4]}", "mode": "background",
-             "label": label, "model": model, "pdf": ", ".join(pdf_names) or None, "pdfs": list(pdf_names),
-             "prompts": keyed, "system": system, "think": think, "max_out": int(max_out), "interactions": started,
-             "created": datetime.now().isoformat(timespec="seconds")}
+    entry = {"name": f"bg-{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:4]}", "provider": PROVIDER_GEMINI,
+             "mode": "background", "label": label, "model": model, "pdf": ", ".join(pdf_names) or None,
+             "pdfs": list(pdf_names), "prompts": keyed, "system": system, "think": think, "max_out": int(max_out),
+             "interactions": started, "created": datetime.now().isoformat(timespec="seconds")}
     mutate_jobs(rt.lock, lambda jobs: jobs.insert(0, entry))
     return entry
 

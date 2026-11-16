@@ -42,7 +42,8 @@ def row(**over):
 
 
 def batch_entry(**over):
-    """Frisch gestarteter Batch (noch ohne Endzustand)."""
+    """Frisch gestarteter Batch (noch ohne Endzustand), im Format von vor Issue #8: ohne das Pflichtfeld provider, das
+    die App beim Start ergänzt (migrate_history). Ein neuer Eintrag: batch_entry(provider=PROVIDER_GEMINI)."""
     e = {"name": "batches/abc123def456", "label": "altbatch", "model": "gemini-4-carbon", "pdf": "a.pdf",
          "pdfs": ["a.pdf"], "prompts": {"prompt-1": "Eins"}, "system": "", "think": "high", "max_out": 32768,
          "created": "2026-10-19T14:38:00"}

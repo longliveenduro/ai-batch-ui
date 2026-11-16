@@ -1,6 +1,7 @@
 """Tests der reinen Logik ohne Oberfläche: Parser, Hilfsfunktionen, Dateiverwaltung, Anfrageaufbau."""
 import hashlib
 import json
+import os
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,7 +10,8 @@ import pytest
 
 import helpers
 from fakes import ApiError, FakeGemini
-from helpers import read_history, write_history
+from helpers import (PROVIDER_GEMINI, PROVIDER_OPENAI, background_entry, batch_entry, openai_entry, read_history,
+                     sync_entry, write_history)
 
 
 def result_line(key="prompt-1", text="Hallo", finish="STOP", usage=None, parts=None, **extra):
@@ -197,6 +199,84 @@ def test_mutate_jobs_is_thread_safe_and_leaves_no_temp_file(app, home, rt):
         t.join(timeout=20)
     assert sorted(e["name"] for e in read_history(home)) == sorted(f"e{i}" for i in range(30))
     assert not (home / "data" / "batch_jobs.tmp").exists()
+
+
+# ---------- Verlaufsdatei: Pflichtfeld provider ----------
+def test_migrate_history_adds_the_provider_to_older_entries(app, home, rt):
+    older = [batch_entry(), background_entry(), sync_entry()]  # alle im Format von vor Issue #8, ohne provider
+    write_history(home, [openai_entry(), *older])
+    assert app.migrate_history(rt.lock) == 3
+    saved = read_history(home)
+    assert [e["provider"] for e in saved] == [PROVIDER_OPENAI, PROVIDER_GEMINI, PROVIDER_GEMINI, PROVIDER_GEMINI]
+    assert saved[0] == openai_entry()  # der OpenAI-Eintrag bleibt, wie er war
+    assert saved[1:] == [{**e, "provider": PROVIDER_GEMINI} for e in older]  # sonst bleibt alles, auch die Reihenfolge
+
+
+def test_migrate_history_only_fills_in_what_is_missing(app, home, rt):
+    write_history(home, [batch_entry(name="a", provider=PROVIDER_GEMINI),
+                         batch_entry(name="b", provider="Neuer Anbieter"),
+                         batch_entry(name="c", provider=""), batch_entry(name="d", provider=None)])
+    assert app.migrate_history(rt.lock) == 2  # leer und None gelten als fehlend, ein anderer Wert bleibt stehen
+    assert [e["provider"] for e in read_history(home)] == [PROVIDER_GEMINI, "Neuer Anbieter", PROVIDER_GEMINI,
+                                                           PROVIDER_GEMINI]
+
+
+def test_migrate_history_writes_nothing_when_no_entry_lacks_the_provider(app, home, rt):
+    write_history(home, [openai_entry(), batch_entry(provider=PROVIDER_GEMINI)])
+    path = helpers.history_path(home)
+    long_ago = 1_000_000_000 * 10**9  # Nanosekunden: schon lange her, eine neue Schreibung fiele auf
+    os.utime(path, ns=(long_ago, long_ago))
+    before = path.read_bytes()
+    assert app.migrate_history(rt.lock) == 0
+    assert path.stat().st_mtime_ns == long_ago and path.read_bytes() == before
+    assert not path.with_suffix(".tmp").exists()
+
+
+def test_migrate_history_without_a_history_creates_nothing(app, home, rt):
+    assert app.migrate_history(rt.lock) == 0
+    assert not (home / "data").exists()  # weder Ordner noch Datei
+    write_history(home, [])
+    assert app.migrate_history(rt.lock) == 0 and read_history(home) == []
+
+
+def test_migrate_history_is_repeatable(app, home, rt):
+    write_history(home, [batch_entry()])
+    assert app.migrate_history(rt.lock) == 1
+    assert app.migrate_history(rt.lock) == 0
+    assert read_history(home) == [batch_entry(provider=PROVIDER_GEMINI)]
+
+
+def test_migrate_history_copes_with_odd_content(app, home, rt):
+    write_history(home, ["kein Eintrag", batch_entry()])  # ein Eintrag, der kein Objekt ist, stört nicht
+    assert app.migrate_history(rt.lock) == 1
+    assert read_history(home) == ["kein Eintrag", batch_entry(provider=PROVIDER_GEMINI)]
+    helpers.history_path(home).write_text("{}")  # keine Liste: nichts zu tun
+    assert app.migrate_history(rt.lock) == 0 and read_history(home) == {}
+
+
+def test_migrate_history_backs_up_a_corrupt_file_like_load_jobs(app, home, rt):
+    path = helpers.history_path(home)
+    path.parent.mkdir(parents=True)
+    path.write_text("{kaputt")
+    assert app.migrate_history(rt.lock) == 0
+    backups = list(path.parent.glob("batch_jobs.defekt-*.json"))
+    assert len(backups) == 1 and backups[0].read_text() == "{kaputt" and not path.exists()
+
+
+def test_migrate_history_loses_no_entry_that_is_added_at_the_same_time(app, home, rt):
+    write_history(home, [batch_entry(name=f"alt{i}") for i in range(5)])
+
+    def add(i):
+        app.mutate_jobs(rt.lock, lambda jobs: jobs.append({"name": f"neu{i}", "provider": PROVIDER_GEMINI}))
+
+    threads = [threading.Thread(target=app.migrate_history, args=(rt.lock,)) for _ in range(5)]
+    threads += [threading.Thread(target=add, args=(i,)) for i in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=20)
+    saved = read_history(home)
+    assert len(saved) == 15 and all(e["provider"] == PROVIDER_GEMINI for e in saved)
 
 
 # ---------- PDF-Upload ----------
