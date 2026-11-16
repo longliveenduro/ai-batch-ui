@@ -1,6 +1,6 @@
-"""Lokale Batch-UI für Gemini 4 Carbon und OpenAI (Streamlit).
+"""AI Batch UI: lokale Oberfläche für Batch-Läufe mit Gemini 4 Carbon und OpenAI (Streamlit).
 
-Start:    pip install -r requirements.txt && streamlit run src/gemini_batch_ui.py   (im Projektordner)
+Start:    pip install -r requirements.txt && streamlit run src/ai_batch_ui.py   (im Projektordner)
 API-Key:  Umgebungsvariablen GEMINI_API_KEY und OPENAI_API_KEY oder Seitenleiste.
 Anbieter: Gemini (Batch und Hintergrund) oder OpenAI (nur Batch, Responses-Endpunkt), gewählt in der Seitenleiste.
 Modi:     Batch (asynchron, 50 % Rabatt) oder Hintergrund (nur Gemini: Interactions API mit background=true, Long Decode
@@ -9,7 +9,7 @@ Ordner:   conf/ (Zugangsdaten, geheim: credentials.json, token.json) und data/ (
           Ergebnisse, pdf_files.json und openai_files.json = hochgeladene PDFs, requests_*.jsonl = gesendete
           Batch-Anfragen).
           Beide liegen im Projektordner neben src/ (dem Ordner dieser Datei), oder unter dem Ordner aus der
-          Umgebungsvariable GEMINI_UI_HOME.
+          Umgebungsvariable AI_BATCH_UI_HOME.
 Drive:    (optional) In der Google Cloud Console die Drive API aktivieren, eine OAuth-Client-ID
           vom Typ „Desktop-App“ erstellen und als conf/credentials.json ablegen.
           Beim ersten Zugriff öffnet sich der Browser zur Freigabe (nur Lesezugriff).
@@ -17,7 +17,7 @@ Namen:    Ist das Feld „Name“ leer, erzeugt ein kleines Gemini-Modell (Vorei
           Namen aus dem Prompt (Seitenleiste „Namen der Einträge“). Im Tab „Jobs und Ergebnisse“ lassen sich Name
           und Beschreibung ändern, und die Suche findet Einträge wieder.
 Aufbau:   Diese Datei enthält nur die Oberfläche (Seitenleiste, Tabs, Formular, Start-Handler). Die Logik steht
-          im Paket gbui/ neben dieser Datei (Übersicht in der README, Abschnitt 8).
+          im Paket aibui/ neben dieser Datei (Übersicht in der README, Abschnitt 8).
 """
 import hashlib
 import os
@@ -25,23 +25,23 @@ from datetime import datetime
 
 import streamlit as st
 
-from gbui.background import start_background
-from gbui.config import (BATCH_MAX_OUT, BG_DEFAULT_OUT, BG_MAX_OUT, DEFAULT_MODEL, DEFAULT_NAME_MODEL,
-                         DEFAULT_NAME_THINK, DEFAULT_OPENAI_MODEL, DONE, FORM_KEYS, HINT, MAX_POLL_ERRORS, MODE_BATCH,
-                         MODE_BG, NAME_SOURCE_CHARS, NAME_THINK_LEVELS, OPENAI_EFFORTS, OPENAI_MAX_OUT, POLL_SECONDS,
-                         PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDERS, SEPARATOR, TABS, TALK_NEW, THINK_LEVELS,
-                         prepare_folders)
-from gbui.drive import drive_fetch, drive_id, drive_service
-from gbui.forms import delete_entry, entry_label, generate_title, reuse_inputs, save_details
-from gbui.gemini import start_batch, upload_pdf
-from gbui.history import load_jobs, mutate_jobs, runtime
-from gbui.naming import choose_label, default_label, search_jobs
-from gbui.openai_batch import start_openai_batch, upload_pdf_openai
-from gbui.providers import batch_info, entry_mode, entry_provider, make_client
-from gbui.talk import entry_group, parse_conversation
-from gbui.views import job_panel
+from aibui.background import start_background
+from aibui.config import (BATCH_MAX_OUT, BG_DEFAULT_OUT, BG_MAX_OUT, DEFAULT_MODEL, DEFAULT_NAME_MODEL,
+                          DEFAULT_NAME_THINK, DEFAULT_OPENAI_MODEL, DONE, FORM_KEYS, HINT, MAX_POLL_ERRORS, MODE_BATCH,
+                          MODE_BG, NAME_SOURCE_CHARS, NAME_THINK_LEVELS, OPENAI_EFFORTS, OPENAI_MAX_OUT, POLL_SECONDS,
+                          PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDERS, SEPARATOR, TABS, TALK_NEW, THINK_LEVELS,
+                          prepare_folders)
+from aibui.drive import drive_fetch, drive_id, drive_service
+from aibui.forms import delete_entry, entry_label, generate_title, reuse_inputs, save_details
+from aibui.gemini import start_batch, upload_pdf
+from aibui.history import load_jobs, mutate_jobs, runtime
+from aibui.naming import choose_label, default_label, search_jobs
+from aibui.openai_batch import start_openai_batch, upload_pdf_openai
+from aibui.providers import batch_info, entry_mode, entry_provider, make_client
+from aibui.talk import entry_group, parse_conversation
+from aibui.views import job_panel
 
-st.set_page_config(page_title="Gemini Carbon", layout="wide")
+st.set_page_config(page_title="AI Batch UI", layout="wide")
 
 moved = prepare_folders()
 if moved:

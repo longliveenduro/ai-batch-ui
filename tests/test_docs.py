@@ -4,7 +4,7 @@ import re
 from helpers import PACKAGE_DIR, ROOT, SOURCE_FILES
 
 README = (ROOT / "README.md").read_text("utf-8")
-APP = "\n".join(p.read_text("utf-8") for p in SOURCE_FILES)  # Hauptskript und alle Module von gbui
+APP = "\n".join(p.read_text("utf-8") for p in SOURCE_FILES)  # Hauptskript und alle Module von aibui
 TEST_FILES = sorted((ROOT / "tests").glob("*.py"))
 TESTS_SOURCE = "\n".join(p.read_text("utf-8") for p in TEST_FILES)
 
@@ -12,8 +12,9 @@ TESTS_SOURCE = "\n".join(p.read_text("utf-8") for p in TEST_FILES)
 EXTERNAL_FUNCTIONS = {"generate_content", "create", "count_tokens", "model_dump", "exec", "get", "setdefault", "tabs",
                       "fragment", "rerun", "run", "set_value", "from_file", "getattr", "compile", "split", "join",
                       "resolve", "mkdir", "read_text", "write_text", "glob", "upload", "download", "cancel"}
-EXTERNAL_CONSTANTS = {"GEMINI_API_KEY", "OPENAI_API_KEY", "GEMINI_UI_HOME", "MAX_TOKENS", "STOP", "SAFETY", "RUNNING",
-                      "DONE", "FAILED", "CANCELLED", "INTERRUPTED", "PENDING", "STREAMLIT_LOGGER_LEVEL"}
+EXTERNAL_CONSTANTS = {"GEMINI_API_KEY", "OPENAI_API_KEY", "AI_BATCH_UI_HOME", "MAX_TOKENS", "STOP", "SAFETY", "RUNNING",
+                      "DONE", "FAILED", "CANCELLED", "INTERRUPTED", "PENDING", "STREAMLIT_LOGGER_LEVEL",
+                      "GEMINI_UI_HOME"}  # alter Name von AI_BATCH_UI_HOME, steht nur im Hinweis zur Umbenennung (Issue #18)
 
 
 def defined_functions(source):
@@ -55,7 +56,7 @@ def test_requirement_versions_are_documented():
 
 
 def test_project_files_named_in_the_readme_exist():
-    for name in ("src/gemini_batch_ui.py", "src/gbui", "requirements.txt", "requirements-dev.txt", "pytest.ini",
+    for name in ("src/ai_batch_ui.py", "src/aibui", "requirements.txt", "requirements-dev.txt", "pytest.ini",
                  "README.md"):
         assert name in README and (ROOT / name).exists(), f"{name} fehlt in der README oder im Projekt"
 
@@ -63,14 +64,14 @@ def test_project_files_named_in_the_readme_exist():
 def test_every_package_module_is_described_in_the_readme():
     for path in PACKAGE_DIR.glob("*.py"):
         if path.name != "__init__.py":
-            assert f"src/gbui/{path.name}" in README, f"src/gbui/{path.name} wird in der README nicht erwähnt"
+            assert f"src/aibui/{path.name}" in README, f"src/aibui/{path.name} wird in der README nicht erwähnt"
 
 
 def test_package_modules_named_in_the_readme_exist():
-    named = set(re.findall(r"src/gbui/([A-Za-z_0-9]+\.py)", README))
-    assert named, "Keine Module von gbui in der README gefunden"
+    named = set(re.findall(r"src/aibui/([A-Za-z_0-9]+\.py)", README))
+    assert named, "Keine Module von aibui in der README gefunden"
     unknown = sorted(n for n in named if not (PACKAGE_DIR / n).exists())
-    assert not unknown, f"In der README genannte Module fehlen in src/gbui/: {unknown}"
+    assert not unknown, f"In der README genannte Module fehlen in src/aibui/: {unknown}"
 
 
 def test_every_test_module_is_described_in_the_readme():

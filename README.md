@@ -1,4 +1,4 @@
-# Gemini 4 Carbon: Batch-UI
+# AI Batch UI
 
 Lokale Streamlit-Oberfläche, um **Gemini 4 Carbon** (`gemini-4-carbon`, der Vorgänger `gemini-4-argon` lässt sich im Feld „Modell“ weiter eintragen) oder ein **OpenAI-Modell** (z. B. `gpt-6-astra`) mit **einem oder mehreren PDFs** und **vielen Prompts** zu benutzen. Es gibt zwei Betriebsarten:
 
@@ -40,7 +40,9 @@ Dokumentationsstand: 01.11.2026 (Python 3.12, Streamlit 1.66, google-genai 2.34)
 
 **Nicht-Ziele**: Mehrbenutzerbetrieb, Hosting im Netz, Anmeldung, Kostenabrechnung, explizites Caching (Carbon und Argon unterstützen es nicht, siehe Abschnitt 5).
 
-**Herkunft.** Die Idee war ein kleines Streamlit-Werkzeug für den Batch-Betrieb mit dem Gemini-Batch-API. Daraus wurde zuerst eine Ein-Datei-App und mit dem Umfang ein Hauptskript für die Oberfläche plus das Paket `gbui` für die Logik (Abschnitt 8). Die Oberfläche ist deutsch.
+**Herkunft.** Die Idee war ein kleines Streamlit-Werkzeug für den Batch-Betrieb mit dem Gemini-Batch-API. Daraus wurde zuerst eine Ein-Datei-App und mit dem Umfang ein Hauptskript für die Oberfläche plus das Paket `aibui` für die Logik (Abschnitt 8). Die Oberfläche ist deutsch.
+
+**Name.** Bis Issue #18 hieß das Projekt `gemini-batch-ui`. Weil die App Batches auch bei anderen Anbietern als Google ausführt (derzeit OpenAI, weitere sollen folgen), heißt sie jetzt `ai-batch-ui` (in der Oberfläche „AI Batch UI“). Gemini-spezifische Teile behalten Gemini im Namen (`gemini.py`, `GEMINI_API_KEY`, `PROVIDER_GEMINI`). Wer von der alten Fassung umsteigt, beachtet vier Namen: Das Hauptskript heißt `src/ai_batch_ui.py` (vorher `src/gemini_batch_ui.py`), das Paket `aibui` (vorher `gbui`), die Umgebungsvariable `AI_BATCH_UI_HOME` (vorher `GEMINI_UI_HOME`, der alte Name wird nicht mehr gelesen) und die conda-Umgebung aus Abschnitt 3 `ai-batch-ui` (vorher `gemini-batch`, umbenennen mit `conda rename -n gemini-batch ai-batch-ui`). Der Inhalt von `conf/` und `data/` bleibt unverändert.
 
 ## 2. Funktionen im Überblick
 
@@ -71,8 +73,8 @@ Dokumentationsstand: 01.11.2026 (Python 3.12, Streamlit 1.66, google-genai 2.34)
 **Installation** (am besten in einer eigenen Umgebung, damit andere Pakete unberührt bleiben):
 
 ```bash
-conda create -n gemini-batch python=3.12 -y
-conda activate gemini-batch
+conda create -n ai-batch-ui python=3.12 -y
+conda activate ai-batch-ui
 pip install -r requirements.txt
 ```
 
@@ -95,10 +97,10 @@ Kein `pip install -U -r ...` in einer gemeinsam genutzten Umgebung (z. B. Anacon
 ```bash
 export GEMINI_API_KEY="dein-key"      # optional, sonst in der Seitenleiste eintragen
 export OPENAI_API_KEY="dein-key"      # optional, für den Anbieter OpenAI
-streamlit run src/gemini_batch_ui.py  # im Projektordner ausführen, öffnet http://localhost:8501
+streamlit run src/ai_batch_ui.py  # im Projektordner ausführen, öffnet http://localhost:8501
 ```
 
-Anderer Port: `streamlit run src/gemini_batch_ui.py --server.port 8502`. Beenden mit Strg+C (Batches und Hintergrund-Läufe laufen bei Google weiter). Beim ersten Start legt die App die Ordner `conf/` und `data/` im Projektordner neben `src/` an (Abschnitt 7).
+Anderer Port: `streamlit run src/ai_batch_ui.py --server.port 8502`. Beenden mit Strg+C (Batches und Hintergrund-Läufe laufen bei Google weiter). Beim ersten Start legt die App die Ordner `conf/` und `data/` im Projektordner neben `src/` an (Abschnitt 7).
 
 **Erster Lauf in 60 Sekunden**
 
@@ -229,9 +231,9 @@ Die **Cache-Strategie** (Reihenfolge `[Systemanweisung] [PDF 1] [PDF 2] … [Pro
 - Seitenleiste „Gemini API-Key“ und „OpenAI API-Key“ (Passwortfelder) oder die Umgebungsvariablen `GEMINI_API_KEY` und `OPENAI_API_KEY` (werden als Vorbelegung genutzt). Die Keys werden nicht gespeichert. Gebraucht wird der Key des gewählten Anbieters, dazu der des anderen Anbieters, wenn man dessen Verlaufseinträge abfragen will.
 - Seitenleiste „Anbieter für neue Anfragen“: `Gemini` (Voreinstellung) oder `OpenAI`.
 - Seitenleiste „Modell“, je Anbieter ein eigenes Feld. Gemini, Voreinstellung `gemini-4-carbon`: Andere Modelle sind möglich (z. B. `gemini-4-argon`, laut Google schneller und mit weniger Denk-Token), aber die App ist auf die Gemini-4-Modelle zugeschnitten (Batch-Limit, `thinking_level`-Werte, Caching-Annahmen). OpenAI, Voreinstellung `gpt-6-astra`: Jedes Modell mit Responses API, Batch API und PDF-Eingabe geht, etwa `gpt-6.1-sol` oder `gpt-6-luna` (Namen laut OpenAI-Doku, Stand 10.11.2026).
-- Optional die Umgebungsvariable `GEMINI_UI_HOME`: Ordner, unter dem `conf/` und `data/` liegen. Voreinstellung ist der Projektordner (der Ordner über `src/`), unabhängig vom Arbeitsordner. Nützlich für getrennte Datenbestände und für Tests.
+- Optional die Umgebungsvariable `AI_BATCH_UI_HOME`: Ordner, unter dem `conf/` und `data/` liegen. Voreinstellung ist der Projektordner (der Ordner über `src/`), unabhängig vom Arbeitsordner. Nützlich für getrennte Datenbestände und für Tests. Bis Issue #18 hieß die Variable `GEMINI_UI_HOME`, der alte Name wird nicht mehr gelesen.
 
-### 6.2 Konstanten im Code (`src/gbui/config.py`)
+### 6.2 Konstanten im Code (`src/aibui/config.py`)
 
 | Konstante | Wert | Bedeutung |
 |---|---|---|
@@ -239,7 +241,7 @@ Die **Cache-Strategie** (Reihenfolge `[Systemanweisung] [PDF 1] [PDF 2] … [Pro
 | `DEFAULT_OPENAI_MODEL` | `gpt-6-astra` | Voreinstellung Modell bei OpenAI |
 | `PROVIDER_GEMINI`, `PROVIDER_OPENAI` | „Gemini“, „OpenAI“ | Anbieter. `PROVIDER_OPENAI` steht auch im Feld `provider` der OpenAI-Einträge |
 | `PROVIDERS` | beide Anbieter | Auswahl in der Seitenleiste, Voreinstellung ist der erste |
-| `BASE` | Projektordner: Ordner über `src/` (liegt das Paket `gbui` in keinem Ordner namens `src`, der Ordner mit dem Paket), oder `GEMINI_UI_HOME` | Wurzel für `conf/` und `data/` (`_base_dir()`) |
+| `BASE` | Projektordner: Ordner über `src/` (liegt das Paket `aibui` in keinem Ordner namens `src`, der Ordner mit dem Paket), oder `AI_BATCH_UI_HOME` | Wurzel für `conf/` und `data/` (`_base_dir()`) |
 | `CONF_DIR` | `BASE/conf` | Zugangsdaten, geheim |
 | `DATA_DIR` | `BASE/data` | erzeugte Daten |
 | `CREDENTIALS_FILE`, `TOKEN_FILE` | `conf/credentials.json`, `conf/token.json` | Drive-OAuth-Client und Drive-Login |
@@ -276,7 +278,7 @@ Die **Cache-Strategie** (Reihenfolge `[Systemanweisung] [PDF 1] [PDF 2] … [Pro
 | `TALK_MINE`, `TALK_YOURS` | `[Runde {n}: Mein Prompt]`, `[Runde {n}: Deine Antwort dazu]` | Marken je Runde |
 | `TALK_MARK` | Muster | erkennt genau diese Marken wieder (`parse_conversation()`) |
 
-Weitere Voreinstellungen stehen direkt im Hauptskript (`src/gemini_batch_ui.py`): Denktiefe `high` (`st.session_state.setdefault("think", "high")`), Ausgabe-Token im Batch 32.768 und im Hintergrund `BG_DEFAULT_OUT`. Bei OpenAI: Denktiefe „Standard“ (`st.session_state.setdefault("effort", "Standard")`) und Ausgabe-Token 32.768. Wiederholungen bei vorübergehenden Fehlern: `create_interaction()` (Hintergrund) versucht es bis zu dreimal, Pause 10 s und 20 s, nur bei 429: Nach einem 5xx könnte die Interaktion schon angelegt sein, und ein zweiter Aufruf würde sie doppelt berechnen. Das SDK wiederholt 5xx selbst, kurz und höchstens zweimal.
+Weitere Voreinstellungen stehen direkt im Hauptskript (`src/ai_batch_ui.py`): Denktiefe `high` (`st.session_state.setdefault("think", "high")`), Ausgabe-Token im Batch 32.768 und im Hintergrund `BG_DEFAULT_OUT`. Bei OpenAI: Denktiefe „Standard“ (`st.session_state.setdefault("effort", "Standard")`) und Ausgabe-Token 32.768. Wiederholungen bei vorübergehenden Fehlern: `create_interaction()` (Hintergrund) versucht es bis zu dreimal, Pause 10 s und 20 s, nur bei 429: Nach einem 5xx könnte die Interaktion schon angelegt sein, und ein zweiter Aufruf würde sie doppelt berechnen. Das SDK wiederholt 5xx selbst, kurz und höchstens zweimal.
 
 ### 6.3 Streamlit-Konfiguration (optional, `.streamlit/config.toml`)
 
@@ -286,7 +288,7 @@ fileWatcherType = "none"   # vermeidet „inotify watch limit reached“ unter L
 maxUploadSize = 500        # MB pro hochgeladener Datei (Standard 200)
 ```
 
-Streamlit liest diese Datei aus `.streamlit/` im **Arbeitsordner**, in dem `streamlit run` gestartet wird, nicht aus `conf/`. Am besten startet man die App im Projektordner (dann passt auch der Pfad `src/gemini_batch_ui.py`).
+Streamlit liest diese Datei aus `.streamlit/` im **Arbeitsordner**, in dem `streamlit run` gestartet wird, nicht aus `conf/`. Am besten startet man die App im Projektordner (dann passt auch der Pfad `src/ai_batch_ui.py`).
 
 ### 6.4 Google Drive einrichten (optional)
 
@@ -321,17 +323,17 @@ Die Mindestversionen (Python 3.12, Streamlit 1.67.0, google-genai 3.3.0, openai 
 
 ## 7. Lokale Dateien und Datenformate
 
-Die App legt `conf/` (Konfiguration und Zugangsdaten) und `data/` (erzeugte Daten) im **Projektordner** an, neben `src/` und unabhängig vom Arbeitsordner. Projektordner ist der Ordner über `src/`. Mit der Umgebungsvariable `GEMINI_UI_HOME` lässt sich ein anderer Ordner festlegen, unter dem beide liegen.
+Die App legt `conf/` (Konfiguration und Zugangsdaten) und `data/` (erzeugte Daten) im **Projektordner** an, neben `src/` und unabhängig vom Arbeitsordner. Projektordner ist der Ordner über `src/`. Mit der Umgebungsvariable `AI_BATCH_UI_HOME` lässt sich ein anderer Ordner festlegen, unter dem beide liegen.
 
 ```text
-gemini-4-batch/                     # Projektordner
+ai-batch-ui/                        # Projektordner
 ├── README.md
 ├── requirements.txt
 ├── requirements-dev.txt            # zusätzlich pytest und pyyaml, nur für die Tests
 ├── pytest.ini                      # pytest-Einstellungen
 ├── src/
-│   ├── gemini_batch_ui.py          # Hauptskript: nur die Oberfläche
-│   └── gbui/                       # Paket mit der Logik, ein Modul je Thema (Abschnitt 8)
+│   ├── ai_batch_ui.py              # Hauptskript: nur die Oberfläche
+│   └── aibui/                      # Paket mit der Logik, ein Modul je Thema (Abschnitt 8)
 ├── tests/                          # automatisierte Tests (Abschnitt 9.3)
 ├── .github/workflows/tests.yml     # GitHub Actions: führt pytest automatisch aus (Abschnitt 9.5)
 ├── .streamlit/config.toml          # optional, Streamlit-Einstellungen (aus dem Arbeitsordner gelesen)
@@ -347,7 +349,7 @@ gemini-4-batch/                     # Projektordner
     └── requests_openai_<unixzeit>.jsonl  # dasselbe für OpenAI-Batches
 ```
 
-**Lage von Hauptskript und Paket.** `README.md`, `requirements*.txt` und `pytest.ini` bleiben im Projektordner, weil Werkzeuge sie dort erwarten. Der Ordner `gbui/` muss **neben** `gemini_batch_ui.py` liegen: Streamlit nimmt den Ordner des Hauptskripts in den Suchpfad für Importe auf. Liegen beide noch direkt im Projektordner (flaches Layout, älterer Stand), läuft die App ebenfalls: `conf/` und `data/` entstehen dann im Ordner mit dem Paket und damit an derselben Stelle. Für bestehende Installationen genügt es, das Hauptskript **und** den Ordner `gbui/` nach `src/` zu verschieben. `conf/` und `data/` bleiben unverändert, nur der Startbefehl ändert sich zu `streamlit run src/gemini_batch_ui.py`.
+**Lage von Hauptskript und Paket.** `README.md`, `requirements*.txt` und `pytest.ini` bleiben im Projektordner, weil Werkzeuge sie dort erwarten. Der Ordner `aibui/` muss **neben** `ai_batch_ui.py` liegen: Streamlit nimmt den Ordner des Hauptskripts in den Suchpfad für Importe auf. Liegen beide noch direkt im Projektordner (flaches Layout, älterer Stand), läuft die App ebenfalls: `conf/` und `data/` entstehen dann im Ordner mit dem Paket und damit an derselben Stelle. Für bestehende Installationen genügt es, das Hauptskript **und** den Ordner `aibui/` nach `src/` zu verschieben. `conf/` und `data/` bleiben unverändert, nur der Startbefehl ändert sich zu `streamlit run src/ai_batch_ui.py`.
 
 **Übernahme älterer Stände.** Lagen `credentials.json`, `token.json`, `batch_jobs.json`, `pdf_files.json`, `requests_*.jsonl` oder `batch_jobs.defekt-*.json` noch direkt im Projektordner (statt in `conf/` bzw. `data/`), verschiebt `prepare_folders()` sie beim Start dorthin (Hinweis im Terminal und als Toast). Es wird nie etwas überschrieben: Liegt am Ziel schon eine gleichnamige Datei, bleibt die alte liegen. Durchsucht wird nur der Projektordner, nie der Arbeitsordner. Tipp: Vor dem ersten Start einer neuen Version `batch_jobs.json` kopieren, denn Ergebnisse sind nach Ablauf der Aufbewahrung bei Google nicht neu abrufbar.
 
@@ -548,29 +550,29 @@ Unten steht der bisherige Verlauf unseres Gesprächs: meine früheren Prompts un
 
 ## 8. Architektur
 
-Bewusst ohne Klassen und ohne Datenbank: Die Logik steht als Funktionen im Paket `gbui`, die Oberfläche im Hauptskript `src/gemini_batch_ui.py`. Streamlit führt das **Hauptskript** bei **jeder** Interaktion von oben nach unten neu aus, die Module von `gbui` dagegen nur beim ersten Import. Alles, was länger leben muss, steckt deshalb in Dateien, in `st.session_state` oder in `runtime()`.
+Bewusst ohne Klassen und ohne Datenbank: Die Logik steht als Funktionen im Paket `aibui`, die Oberfläche im Hauptskript `src/ai_batch_ui.py`. Streamlit führt das **Hauptskript** bei **jeder** Interaktion von oben nach unten neu aus, die Module von `aibui` dagegen nur beim ersten Import. Alles, was länger leben muss, steckt deshalb in Dateien, in `st.session_state` oder in `runtime()`.
 
 ### Landkarte (Dateien von oben nach unten)
 
-Ein Modul von `gbui` importiert nur Module, die in dieser Tabelle über ihm stehen. So gibt es keine Importzyklen (ein Test prüft es, die Liste steht auch in `src/gbui/__init__.py`).
+Ein Modul von `aibui` importiert nur Module, die in dieser Tabelle über ihm stehen. So gibt es keine Importzyklen (ein Test prüft es, die Liste steht auch in `src/aibui/__init__.py`).
 
 | Datei | Inhalt |
 |---|---|
-| `src/gbui/config.py` | Konstanten (siehe 6.2), `_base_dir()` (Wurzel), `prepare_folders()` (legt `conf/` und `data/` an, übernimmt Altbestand) |
-| `src/gbui/history.py` | `runtime()` (prozessweit: `lock`, die Sperre für den Verlauf), `load_jobs()`, `mutate_jobs(lock, change)` |
-| `src/gbui/rows.py` | die gemeinsame Zeilenform: `pick()`, `parse_line()`, `parse_results()` (mit wählbarem Zeilenleser), für den Hintergrund-Modus `as_dict()` und `parse_interaction()` |
-| `src/gbui/drive.py` | `drive_service()` (OAuth, Neuanmeldung bei `RefreshError`), `drive_id()` (ID aus Link), `drive_fetch()` (PDF laden/exportieren) |
-| `src/gbui/gemini.py` | `upload_pdf()` (Files API + `data/pdf_files.json`), `start_batch()` (JSONL bauen, hochladen, `batches.create`) |
-| `src/gbui/background.py` | Hintergrund-Modus (Interactions API, Long Decode): `interaction_request()` (Anfrage), `create_interaction()` (mit Wiederholung), `start_background()` (alle Prompts starten, Eintrag speichern), `fetch_background()` (Stand, Zeilen, Endzustand), `cancel_background()` |
-| `src/gbui/openai_batch.py` | `openai_client()` (lädt das Paket erst hier), `upload_pdf_openai()` (Files API + `data/openai_files.json`), `openai_request()` (Anfragerumpf), `start_openai_batch()` (JSONL bauen, hochladen, `batches.create`), `openai_error_text()`, `parse_openai_line()`, `fetch_openai_batch()` (Status, Ausgabe- und Fehlerdatei) |
-| `src/gbui/providers.py` | `make_client()`, `entry_provider()`, `entry_mode()` (`background` oder `batch`, `sync` nur für ältere Einträge), `refresh()` (Status + Ergebnisse laden, Endergebnis sichern, bei OpenAI-Einträgen über `fetch_openai_batch()`, bei Hintergrund-Einträgen über `fetch_background()`), `batch_info()`, `cancel_batch()` (je Anbieter und Modus) |
-| `src/gbui/talk.py` | Gesprächsverlauf als Text: `entry_group()` (Prompts pro Gespräch, über 1 nur bei älteren synchronen Einträgen), `talk_safe()`, `conversation_text()`, `parse_conversation()`, `history_turns()`, `short_prompt()` |
-| `src/gbui/naming.py` | Namen der Einträge (ohne Streamlit): `default_label()` (Standardname), `naming_source()` (Text für das Modell), `clean_name()`, `generate_name()` (ein Aufruf von `generate_content`), `choose_label()` (welcher Name beim Start gilt, ein Fehler stoppt den Start nie), Suche mit `entry_text()`, `matches()` und `search_jobs()`, `file_stem()` (Dateiname des Markdown-Downloads) |
-| `src/gbui/forms.py` | Verlauf und Formular: `entry_label()`, `fill_form()` (Hilfe), `reuse_inputs()` und `continue_conversation()` (Callbacks), `delete_entry()` (Callback), `save_details()` und `generate_title()` (Callbacks für Name und Beschreibung), `update_entry()` und `keep_visible()` (Hilfen) |
-| `src/gbui/views.py` | Anzeige: `show_text()`, `show_prompt()`, `request_details()`, `talk_tools()`, `show_rows()`, `legacy_sync_panel()`, `job_panel()` (läuft als Fragment) |
-| `src/gemini_batch_ui.py` | Hauptskript, nur Oberfläche: Seitenleiste (Anbieter, Keys, Modell, Namen der Einträge), `client_for()` (Client je Anbieter, `None` ohne Key), `gemini_client()` (Gemini-Client für die Namen, auch bei einem OpenAI-Lauf), Tabs, `with tab_new:` (Formular + Start-Handler), `with tab_jobs:` (Suche, Auswahl, Buttons, Fragment mit dem Client des Eintragsanbieters) |
+| `src/aibui/config.py` | Konstanten (siehe 6.2), `_base_dir()` (Wurzel), `prepare_folders()` (legt `conf/` und `data/` an, übernimmt Altbestand) |
+| `src/aibui/history.py` | `runtime()` (prozessweit: `lock`, die Sperre für den Verlauf), `load_jobs()`, `mutate_jobs(lock, change)` |
+| `src/aibui/rows.py` | die gemeinsame Zeilenform: `pick()`, `parse_line()`, `parse_results()` (mit wählbarem Zeilenleser), für den Hintergrund-Modus `as_dict()` und `parse_interaction()` |
+| `src/aibui/drive.py` | `drive_service()` (OAuth, Neuanmeldung bei `RefreshError`), `drive_id()` (ID aus Link), `drive_fetch()` (PDF laden/exportieren) |
+| `src/aibui/gemini.py` | `upload_pdf()` (Files API + `data/pdf_files.json`), `start_batch()` (JSONL bauen, hochladen, `batches.create`) |
+| `src/aibui/background.py` | Hintergrund-Modus (Interactions API, Long Decode): `interaction_request()` (Anfrage), `create_interaction()` (mit Wiederholung), `start_background()` (alle Prompts starten, Eintrag speichern), `fetch_background()` (Stand, Zeilen, Endzustand), `cancel_background()` |
+| `src/aibui/openai_batch.py` | `openai_client()` (lädt das Paket erst hier), `upload_pdf_openai()` (Files API + `data/openai_files.json`), `openai_request()` (Anfragerumpf), `start_openai_batch()` (JSONL bauen, hochladen, `batches.create`), `openai_error_text()`, `parse_openai_line()`, `fetch_openai_batch()` (Status, Ausgabe- und Fehlerdatei) |
+| `src/aibui/providers.py` | `make_client()`, `entry_provider()`, `entry_mode()` (`background` oder `batch`, `sync` nur für ältere Einträge), `refresh()` (Status + Ergebnisse laden, Endergebnis sichern, bei OpenAI-Einträgen über `fetch_openai_batch()`, bei Hintergrund-Einträgen über `fetch_background()`), `batch_info()`, `cancel_batch()` (je Anbieter und Modus) |
+| `src/aibui/talk.py` | Gesprächsverlauf als Text: `entry_group()` (Prompts pro Gespräch, über 1 nur bei älteren synchronen Einträgen), `talk_safe()`, `conversation_text()`, `parse_conversation()`, `history_turns()`, `short_prompt()` |
+| `src/aibui/naming.py` | Namen der Einträge (ohne Streamlit): `default_label()` (Standardname), `naming_source()` (Text für das Modell), `clean_name()`, `generate_name()` (ein Aufruf von `generate_content`), `choose_label()` (welcher Name beim Start gilt, ein Fehler stoppt den Start nie), Suche mit `entry_text()`, `matches()` und `search_jobs()`, `file_stem()` (Dateiname des Markdown-Downloads) |
+| `src/aibui/forms.py` | Verlauf und Formular: `entry_label()`, `fill_form()` (Hilfe), `reuse_inputs()` und `continue_conversation()` (Callbacks), `delete_entry()` (Callback), `save_details()` und `generate_title()` (Callbacks für Name und Beschreibung), `update_entry()` und `keep_visible()` (Hilfen) |
+| `src/aibui/views.py` | Anzeige: `show_text()`, `show_prompt()`, `request_details()`, `talk_tools()`, `show_rows()`, `legacy_sync_panel()`, `job_panel()` (läuft als Fragment) |
+| `src/ai_batch_ui.py` | Hauptskript, nur Oberfläche: Seitenleiste (Anbieter, Keys, Modell, Namen der Einträge), `client_for()` (Client je Anbieter, `None` ohne Key), `gemini_client()` (Gemini-Client für die Namen, auch bei einem OpenAI-Lauf), Tabs, `with tab_new:` (Formular + Start-Handler), `with tab_jobs:` (Suche, Auswahl, Buttons, Fragment mit dem Client des Eintragsanbieters) |
 
-Die Grenze zwischen Logik und Oberfläche ist die Paketgrenze: Das Hauptskript importiert aus `gbui`, `gbui` importiert es nie (ein Test prüft es). Gezeichnet wird nur in `views.py`. Die übrigen Module sind ohne Oberfläche testbar (siehe 9.3): `forms.py` und `providers.py` nutzen von Streamlit nur `st.session_state`, `history.py` nur `@st.cache_resource`, `naming.py` nichts. `views.py` läuft in den Tests über `AppTest`. Die Fixture `app` in `tests/conftest.py` lädt alle Module von `gbui` als ein Objekt.
+Die Grenze zwischen Logik und Oberfläche ist die Paketgrenze: Das Hauptskript importiert aus `aibui`, `aibui` importiert es nie (ein Test prüft es). Gezeichnet wird nur in `views.py`. Die übrigen Module sind ohne Oberfläche testbar (siehe 9.3): `forms.py` und `providers.py` nutzen von Streamlit nur `st.session_state`, `history.py` nur `@st.cache_resource`, `naming.py` nichts. `views.py` läuft in den Tests über `AppTest`. Die Fixture `app` in `tests/conftest.py` lädt alle Module von `aibui` als ein Objekt.
 
 ### Datenfluss Batch
 
@@ -637,8 +639,8 @@ Jobs-Tab ──► Popover „Name und Beschreibung“: save_details() bzw. gene
 - **Button im Fragment, der das Formular füllt**: Ein Klick im Fragment (die Ergebnisse laufen in `job_panel`) löst nur einen Fragment-Lauf aus. „Gespräch fortsetzen“ füllt das Formular deshalb in einem **Callback** (`continue_conversation`: Widget-Werte lassen sich nur setzen, bevor das Widget im Lauf erzeugt wurde) und ruft danach `st.rerun()` auf, damit ein voller Lauf das Formular zeigt und den Tab wechselt. Im `AppTest` ist schon der erste Lauf voll. Dort verbraucht er den einmaligen Hinweis `reused_note`, im Browser erscheint er nach dem Rerun.
 - **Felder, die einen Lauf lang fehlen**: Streamlit vergisst den Wert eines Widgets, das in einem Lauf nicht gezeichnet wird (Felder des anderen Anbieters, alles hinter `st.stop()` bei fehlendem API-Key). Das Backend behält dabei teils noch Werte, der Browser baut das Feld aber mit dem Standardwert neu auf: Das Modellfeld war leer, „Max. Ausgabe-Token“ stand auf 256, die Denktiefe auf „Standard“, Prompts und Systemanweisung waren weg. Darum weist das Hauptskript jeden Wert aus `FORM_KEYS` vor dem Zeichnen neu zu (`st.session_state[key] = st.session_state[key]`). Das hält ihn am Leben und schickt ihn mit `set_value` an den Browser. `AppTest` sieht den Fehler nicht, weil es nur den Wert im Backend zeigt. Die Tests in `test_openai.py` prüfen deshalb, was die App dem Browser schickt (`proto.set_value`, Hilfsfunktion `sent_to_browser`). Namensfelder (`label_*`), die Suche und die Auswahl im Jobs-Tab (`jobs_search`, `sel`), der Anbieterschalter und der Tab-Zustand (`view`) brauchen das nicht, ein Test hält die Ausnahmen fest. Die Einstellungen der Namensvergabe (`auto_name`, `name_model`, `name_think`) stehen dagegen in `FORM_KEYS`.
 - **Sperre für den Verlauf**: `rt = runtime()` ist prozessweit geteilt und enthält nur noch die Sperre `rt.lock` (jede Browser-Sitzung läuft in einem eigenen Thread, die App startet selbst keine Threads mehr). Schreibzugriffe auf den Verlauf nur über `mutate_jobs(rt.lock, …)` (liest unter Sperre, schreibt atomar über `batch_jobs.tmp` + `os.replace`).
-- **Module und Hauptskript**: Streamlit führt das Hauptskript bei jedem Lauf neu aus, die Module von `gbui` dagegen nur beim ersten Import (danach kommen sie aus dem Importspeicher von Python). Darum steht auf Modulebene kein Streamlit-Aufruf außer Dekoratoren wie `@st.cache_resource` (ein Test prüft es), und `st.set_page_config` bleibt im Hauptskript, weil es der erste Streamlit-Aufruf sein muss. Konstanten wie `DATA_DIR` werden einmal je Prozess berechnet. Ändert man beim Entwickeln eine Datei von `gbui`, wirft Streamlit alle beobachteten Module aus dem Importspeicher, und der nächste Lauf importiert sie neu (nur mit Datei-Beobachter, siehe 6.3).
-- **Importpfad**: Beim Start mit `streamlit run` nimmt Streamlit den Ordner des Hauptskripts in `sys.path` auf, deshalb findet `import gbui` den Ordner daneben. `AppTest` tut das erst in neueren Versionen (in 1.56.0 noch nicht), darum trägt `pytest.ini` `src` mit `pythonpath = src` ein. Ein Test, der eine Kopie des Hauptskripts an einen anderen Ort stellt, ergänzt den Pfad selbst.
+- **Module und Hauptskript**: Streamlit führt das Hauptskript bei jedem Lauf neu aus, die Module von `aibui` dagegen nur beim ersten Import (danach kommen sie aus dem Importspeicher von Python). Darum steht auf Modulebene kein Streamlit-Aufruf außer Dekoratoren wie `@st.cache_resource` (ein Test prüft es), und `st.set_page_config` bleibt im Hauptskript, weil es der erste Streamlit-Aufruf sein muss. Konstanten wie `DATA_DIR` werden einmal je Prozess berechnet. Ändert man beim Entwickeln eine Datei von `aibui`, wirft Streamlit alle beobachteten Module aus dem Importspeicher, und der nächste Lauf importiert sie neu (nur mit Datei-Beobachter, siehe 6.3).
+- **Importpfad**: Beim Start mit `streamlit run` nimmt Streamlit den Ordner des Hauptskripts in `sys.path` auf, deshalb findet `import aibui` den Ordner daneben. `AppTest` tut das erst in neueren Versionen (in 1.56.0 noch nicht), darum trägt `pytest.ini` `src` mit `pythonpath = src` ein. Ein Test, der eine Kopie des Hauptskripts an einen anderen Ort stellt, ergänzt den Pfad selbst.
 
 ### Session-State- und Widget-Schlüssel
 
@@ -669,7 +671,7 @@ Jobs-Tab ──► Popover „Name und Beschreibung“: save_details() bzw. gene
 
 ### 9.1 Spielregeln
 
-1. **Erst diese Datei lesen**, dann das Hauptskript `src/gemini_batch_ui.py` und das Modul in `src/gbui/`, das zum Thema passt (Landkarte in Abschnitt 8). Kleine, gezielte Änderungen statt Umbauten. Logik gehört in ein Modul von `gbui`, das Hauptskript bleibt die Oberfläche. Ein neues Thema bekommt ein neues Modul, eingetragen in der Landkarte und in der Liste in `src/gbui/__init__.py`. Ein Modul importiert nur Module, die in dieser Liste über ihm stehen. Wächst eine Datei deutlich über etwa 1.000 Zeilen, wird sie nach Thema geteilt (Importe werden gecacht, nur das Hauptskript läuft bei jedem Rerun neu).
+1. **Erst diese Datei lesen**, dann das Hauptskript `src/ai_batch_ui.py` und das Modul in `src/aibui/`, das zum Thema passt (Landkarte in Abschnitt 8). Kleine, gezielte Änderungen statt Umbauten. Logik gehört in ein Modul von `aibui`, das Hauptskript bleibt die Oberfläche. Ein neues Thema bekommt ein neues Modul, eingetragen in der Landkarte und in der Liste in `src/aibui/__init__.py`. Ein Modul importiert nur Module, die in dieser Liste über ihm stehen. Wächst eine Datei deutlich über etwa 1.000 Zeilen, wird sie nach Thema geteilt (Importe werden gecacht, nur das Hauptskript läuft bei jedem Rerun neu).
 2. **Prefix stabil halten** (Abschnitt 5). Alles, was vor oder zwischen den PDFs steht, beeinflusst die Cache-Trefferquote.
 3. **Verlauf nur über `mutate_jobs`** schreiben, nie `data/batch_jobs.json` direkt. Lesen mit `load_jobs()`. Neue Eintragsfelder optional (`.get()`), weil alte Einträge sie nicht haben.
 4. **Zeilenform nur in `parse_line()`, `parse_openai_line()` und `parse_interaction()` ändern** und dort neue Felder ergänzen (alle drei liefern dieselbe Form). Anzeige in `show_rows()`. Alle Modi und Anbieter nutzen dieselbe Zeilenform, und gespeicherte Zeilen alter Läufe haben neue Felder nicht (`.get()`).
@@ -701,7 +703,7 @@ Jobs-Tab ──► Popover „Name und Beschreibung“: save_details() bzw. gene
 **Weiteren Anbieter ergänzen** (Muster: OpenAI)
 
 1. Konstante `PROVIDER_…` und Eintrag in `PROVIDERS` (`config.py`), der Client in `make_client()` (`providers.py`).
-2. Ein neues Modul nach dem Muster von `openai_batch.py` (Upload, Start, Zeilen lesen, Status holen), eingetragen in der Landkarte und in `src/gbui/__init__.py`. Der Zeilenleser muss die Form von `parse_line()` liefern, dann laufen Anzeige, Download und „Gespräch fortsetzen“ unverändert.
+2. Ein neues Modul nach dem Muster von `openai_batch.py` (Upload, Start, Zeilen lesen, Status holen), eingetragen in der Landkarte und in `src/aibui/__init__.py`. Der Zeilenleser muss die Form von `parse_line()` liefern, dann laufen Anzeige, Download und „Gespräch fortsetzen“ unverändert.
 3. Eintrag mit Feld `provider` speichern. `entry_provider()`, `refresh()`, `cancel_batch()` (alle in `providers.py`), `fill_form()` (`forms.py`) und die Formularzweige im Hauptskript erweitern, die Endzustände des Anbieters in `DONE` aufnehmen.
 4. Einen Fake mit echten SDK-Objekten nach dem Muster von `FakeOpenAI` bauen und Tests schreiben (9.3).
 
@@ -715,7 +717,7 @@ Jobs-Tab ──► Popover „Name und Beschreibung“: save_details() bzw. gene
 
 ### 9.3 Automatisierte Tests
 
-Die Testsuite liegt in `tests/` und braucht weder Internet noch API-Key. Alle Google-Dienste sind durch Ersatzobjekte ersetzt (`tests/fakes.py`), und jeder Test läuft in einem Wegwerf-Ordner (`GEMINI_UI_HOME`).
+Die Testsuite liegt in `tests/` und braucht weder Internet noch API-Key. Alle Google-Dienste sind durch Ersatzobjekte ersetzt (`tests/fakes.py`), und jeder Test läuft in einem Wegwerf-Ordner (`AI_BATCH_UI_HOME`).
 
 **Ausführen**
 
@@ -730,8 +732,8 @@ pytest tests/test_background.py -k cancel  # einzelne Datei oder Namensausschnit
 
 | Datei | Inhalt |
 |---|---|
-| `pytest.ini` | Einstellungen, Marker `ui` für die langsameren Oberflächentests, `pythonpath = src` (damit `import gbui` in den Tests klappt) |
-| `tests/conftest.py` | Fixtures: `home` (Wegwerf-Ordner als `GEMINI_UI_HOME`, Dummy-Keys für beide Anbieter), `fresh_package` (importiert die Module von `gbui` in jedem Test neu, weil sie ihre Ordner beim Import aus `GEMINI_UI_HOME` berechnen), `app` (alle Module von `gbui` als ein Objekt), `rt` (Ersatz für `runtime()`), `fake_time` (keine echten Pausen, in allen Modulen). Dazu eine Sperre gegen echte API-Zugriffe und ein Sicherheitsnetz: ändert ein Test `conf/` oder `data/` im Projektordner, schlägt der Lauf am Ende fehl |
+| `pytest.ini` | Einstellungen, Marker `ui` für die langsameren Oberflächentests, `pythonpath = src` (damit `import aibui` in den Tests klappt) |
+| `tests/conftest.py` | Fixtures: `home` (Wegwerf-Ordner als `AI_BATCH_UI_HOME`, Dummy-Keys für beide Anbieter), `fresh_package` (importiert die Module von `aibui` in jedem Test neu, weil sie ihre Ordner beim Import aus `AI_BATCH_UI_HOME` berechnen), `app` (alle Module von `aibui` als ein Objekt), `rt` (Ersatz für `runtime()`), `fake_time` (keine echten Pausen, in allen Modulen). Dazu eine Sperre gegen echte API-Zugriffe und ein Sicherheitsnetz: ändert ein Test `conf/` oder `data/` im Projektordner, schlägt der Lauf am Ende fehl |
 | `tests/fakes.py` | `FakeGemini` (Files API, Batch-API, Interactions API mit `create`, `get` und `cancel`, `models.generate_content` für die Namen, zeichnet Aufrufe auf), `make_interaction` (echte SDK-Interaktion), `make_name_response` (echte SDK-Antwort von `generate_content`), `ApiError`, `InteractionsError`, `FakeDrive`, `install`, `install_drive`. Für OpenAI: `FakeOpenAI` (Files API und Batch API, liefert echte SDK-Objekte `Batch` und `FileObject`), `make_openai_body` (Antwortrumpf wie in der Ausgabedatei), `OpenAIError`, `install_openai` |
 | `tests/helpers.py` | Verlauf lesen und schreiben, Eintrags-Vorlagen (`batch_entry`, `sync_entry`, `background_entry`, `finished_batch`, `finished_background`, `openai_entry`, `finished_openai_batch`, `row`), AppTest-Kürzel (`new_app`, `new_openai_app`, `click`, `set_prompts`, `captions`, `markdown`, `sent_to_browser`) |
 | `tests/test_logic.py` | reine Logik: Parser, Hilfsfunktionen, Ordner und Altbestand, Verlaufsdatei, PDF-Upload, Batch-Anfragen, Gesprächsverlauf als Text (Aufbau, Wiedereinlesen, mehrfaches Fortsetzen) |
@@ -740,13 +742,13 @@ pytest tests/test_background.py -k cancel  # einzelne Datei oder Namensausschnit
 | `tests/test_ui.py` | Oberfläche mit AppTest: Formular, Starts, Jobs-Tab, automatische Prüfung, Übernehmen, Löschen, Altbestand (auch ältere synchrone Einträge), Ordnerlage, Prompt-Anzeige, Gespräch fortsetzen (Marker `ui`) |
 | `tests/test_openai.py` | OpenAI-Anbindung: Anfrageaufbau, PDF-Upload, Ergebniszeilen, Status und Ergebnisdateien, Anbieter-Schalter, Formularwerte beim Anbieterwechsel (was die App dem Browser schickt), Start, Jobs-Tab, Übernehmen, Fortsetzen. Ein Test prüft, dass die Beispielantworten des Fakes gültige Objekte des SDK sind (Oberflächentests mit Marker `ui`) |
 | `tests/test_naming.py` | Namen und Suche: Text für das Modell, Bereinigung der Antwort, Aufruf von `generate_content` (Modell, Denktiefe, Zeitlimit), Fallback auf den Standardnamen bei Fehlern und ohne Key, Suche, Dateiname; Oberfläche: Start in allen Modi und auch bei OpenAI, Einstellungen der Seitenleiste, Suche im Jobs-Tab, Name und Beschreibung ändern, Name aus dem Prompt erzeugen (Oberflächentests mit Marker `ui`) |
-| `tests/test_modules.py` | Aufbau des Pakets `gbui`: jedes Modul lässt sich einzeln importieren (keine Importzyklen), keines importiert das Hauptskript, auf Modulebene steht kein Streamlit-Aufruf |
-| `tests/test_docs.py` | gleicht README und Code ab: genannte Funktionen, Konstanten, Schlüssel, Versionen, Testdateien, Module von `gbui` |
+| `tests/test_modules.py` | Aufbau des Pakets `aibui`: jedes Modul lässt sich einzeln importieren (keine Importzyklen), keines importiert das Hauptskript, auf Modulebene steht kein Streamlit-Aufruf |
+| `tests/test_docs.py` | gleicht README und Code ab: genannte Funktionen, Konstanten, Schlüssel, Versionen, Testdateien, Module von `aibui` |
 | `tests/test_ci.py` | prüft die GitHub-Actions-Datei: Auslöser, Befehle, Python-Versionen laut README, Rechte |
 
 **Wie getestet wird**
 
-- Die Module von `gbui` werden in jedem Test frisch importiert (Fixture `fresh_package`) und als `app` bereitgestellt (`app.parse_line(...)`: der Name wird in allen Modulen gesucht, `app.modules["history"]` liefert ein Modul selbst). Streamlit-Aufrufe darin laufen im „bare mode“, das ist gewollt.
+- Die Module von `aibui` werden in jedem Test frisch importiert (Fixture `fresh_package`) und als `app` bereitgestellt (`app.parse_line(...)`: der Name wird in allen Modulen gesucht, `app.modules["history"]` liefert ein Modul selbst). Streamlit-Aufrufe darin laufen im „bare mode“, das ist gewollt.
 - Die Oberfläche läuft in Streamlits `AppTest` (`new_app()`): Widgets per `key` ansprechen, Tabs über `at.session_state["view"]` wechseln, Uploads mit `at.file_uploader[0].set_value([(name, bytes, mime)])`.
 - Dienste ersetzt man mit `FakeGemini(...)` (Logiktests) bzw. `use_fake(...)` (Oberflächentests). `batch_state`, `get_error`, `batch_cached` und `batch_text` bestimmen, was die Batch-API meldet und was in den Ergebnissen steht. Für den Hintergrund-Modus bestimmt `interaction_results` je Interaktion, wie `interactions.get` antwortet (Argumente für `make_interaction` oder eine Exception), `interaction_create_errors` lässt einzelne `create`-Aufrufe scheitern. `name_text` und `name_error` bestimmen, was `models.generate_content` für die Namen antwortet, `name_calls` zeichnet die Aufrufe auf.
 - OpenAI ersetzt `FakeOpenAI(...)` (in `test_openai.py` über `use_openai(...)`). `batch_status`, `failing`, `bodies` und `batch_errors` bestimmen, was die Batch API meldet und was in Ausgabe- und Fehlerdatei steht. Oberflächentests für OpenAI starten mit `new_openai_app()`: Der Anbieter ist dann schon gewählt, und die Namensvergabe ist aus (sie nutzt immer Gemini), es wird also nie ein Gemini-Client gebaut. Wer sie testen will, ruft `new_openai_app(auto_name=True)` auf und installiert einen `FakeGemini`.
@@ -844,8 +846,8 @@ Die Datei `.github/workflows/tests.yml` führt die Testsuite auf GitHub aus, ohn
 | OpenAI-Batch endet mit `failed`, die Meldung nennt ein Token-Limit | Die Summe der Token aller eingereihten Batches überschreitet das Warteschlangenlimit des Modells | Weniger Prompts oder kürzere PDFs je Batch, warten bis andere Batches fertig sind, Limits der Kontostufe bei OpenAI prüfen. |
 | OpenAI-Batch `expired`, einzelne Prompts mit Fehler | Das Zeitfenster von 24 Stunden reichte nicht für alle Anfragen. Die fertigen Antworten sind geladen | Die fehlenden Prompts mit „Eingaben übernehmen“ erneut starten. |
 | `data/batch_jobs.defekt-<zahl>.json` taucht auf | `data/batch_jobs.json` war beschädigt, die App hat sie gesichert und neu begonnen | Sicherung prüfen, ggf. Einträge von Hand zurückkopieren. |
-| Verlauf leer nach dem Wechsel auf `conf/` und `data/` | Alte `batch_jobs.json` lag nicht im Projektordner, oder `GEMINI_UI_HOME` zeigt woanders hin | Datei von Hand nach `data/` kopieren bzw. `GEMINI_UI_HOME` prüfen. |
-| `ModuleNotFoundError: No module named 'gbui'` | Das Hauptskript steht ohne den Ordner `gbui/` daneben (z. B. nur die eine Datei kopiert) | Den Ordner `gbui/` neben `gemini_batch_ui.py` legen und mit `streamlit run src/gemini_batch_ui.py` starten (Abschnitt 7). |
+| Verlauf leer nach dem Wechsel auf `conf/` und `data/` oder nach der Umbenennung (Issue #18) | Alte `batch_jobs.json` lag nicht im Projektordner, oder `AI_BATCH_UI_HOME` zeigt woanders hin bzw. ist nicht gesetzt (bis Issue #18 hieß die Variable `GEMINI_UI_HOME`, der alte Name gilt nicht mehr) | Datei von Hand nach `data/` kopieren bzw. `AI_BATCH_UI_HOME` prüfen. |
+| `ModuleNotFoundError: No module named 'aibui'` | Das Hauptskript steht ohne den Ordner `aibui/` daneben (z. B. nur die eine Datei kopiert) | Den Ordner `aibui/` neben `ai_batch_ui.py` legen und mit `streamlit run src/ai_batch_ui.py` starten (Abschnitt 7). |
 
 ## 11. Bekannte Einschränkungen und Ideen
 
@@ -892,14 +894,14 @@ Die Datei `.github/workflows/tests.yml` führt die Testsuite auf GitHub aus, ohn
 - **Drive**: nur Lesezugriff (`drive.readonly`). Die App kann nichts ändern oder löschen.
 - **Geheimnisse**: `conf/` (vor allem `credentials.json` und `token.json`) nicht weitergeben und nicht einchecken. Die API-Keys stehen nur in den Browserfeldern oder in den Umgebungsvariablen.
 - **Lokale Daten**: `data/` (z. B. `batch_jobs.json`, `requests_*.jsonl`) enthält Prompts und Antworten im Klartext. Ordner entsprechend schützen (`.gitignore`, Dateirechte).
-- Die App ist für **einen Benutzer auf dem eigenen Rechner** gedacht, ohne Anmeldung. Streamlit lauscht standardmäßig auch im lokalen Netz (die Startmeldung nennt eine „Network URL“), dann könnte jeder im Netz die App samt API-Key-Feld bedienen. Wer das nicht möchte, startet mit `streamlit run src/gemini_batch_ui.py --server.address localhost`. Nicht ungeschützt im Internet betreiben.
+- Die App ist für **einen Benutzer auf dem eigenen Rechner** gedacht, ohne Anmeldung. Streamlit lauscht standardmäßig auch im lokalen Netz (die Startmeldung nennt eine „Network URL“), dann könnte jeder im Netz die App samt API-Key-Feld bedienen. Wer das nicht möchte, startet mit `streamlit run src/ai_batch_ui.py --server.address localhost`. Nicht ungeschützt im Internet betreiben.
 
 ## 13. Verifikationsstand und Quellen
 
 **Verifikationsstand (bitte beim ersten echten Einsatz beobachten)**
 
-- Automatisierte Tests (`pytest`, Abschnitt 9.3) prüfen die App durchgehend gegen Ersatzdienste. Sie bestätigen die Logik, nicht das Verhalten der echten Google-Dienste. Alle 324 Tests (Stand der Änderung für Issue #23) liefen grün in einer frisch installierten Umgebung mit Python 3.12.3 und der niedrigsten unterstützten Kombination (Streamlit 1.67.0, google-genai 3.3.0, openai 3.51.0). Alle drei Mindestversionen sind derzeit zugleich die neuesten Versionen, ein zweiter Lauf mit neueren Versionen entfällt deshalb. Gegenüber dem Stand davor (257 Tests) kamen 66 Tests in `tests/test_naming.py` hinzu, dazu einer in `test_modules.py` (dort läuft ein Test je Modul von `gbui`). Angepasst wurden `test_defaults_in_background_mode` und `test_openai_shows_its_own_defaults_and_no_mode_switch` (das Namensfeld ist nun leer statt mit einem Standardnamen gefüllt), `test_every_form_widget_with_a_key_is_kept_alive_between_runs` (Ausnahme `jobs_search`) und der Helfer `new_openai_app()` (er schaltet die Namensvergabe aus, damit nie ein Gemini-Client gebaut wird). Mit Python 3.11 und mit älteren Versionen von Streamlit, google-genai und openai wird nicht mehr getestet. Die GitHub-Actions-Matrix deckt 3.12 ab.
-- Die Aufteilung in Module (Abschnitt 8) wurde zusätzlich ohne die Testsuite geprüft: Ein Vergleich der Syntaxbäume mit dem Stand davor zeigte, dass der Code unverändert verschoben wurde (nur `_base_dir()` ist angepasst, weil nun der Ort des Pakets zählt) und der Oberflächenteil identisch ist. Außerdem lief die App unter einem echten `streamlit run` (Streamlit 1.55.0, 1.56.0 und 1.67.0) gegen eine echte WebSocket-Sitzung ohne Browser: Beide Tabs wurden ohne Ausnahme gezeichnet, und nach einer Änderung an `gbui/config.py` zeigte der nächste Lauf den neuen Wert (die Module wurden neu importiert). Dieser Serverlauf gehört nicht zur Testsuite.
+- Automatisierte Tests (`pytest`, Abschnitt 9.3) prüfen die App durchgehend gegen Ersatzdienste. Sie bestätigen die Logik, nicht das Verhalten der echten Google-Dienste. Alle 324 Tests (Stand der Änderung für Issue #23) liefen grün in einer frisch installierten Umgebung mit Python 3.12.3 und der niedrigsten unterstützten Kombination (Streamlit 1.67.0, google-genai 3.3.0, openai 3.51.0). Alle drei Mindestversionen sind derzeit zugleich die neuesten Versionen, ein zweiter Lauf mit neueren Versionen entfällt deshalb. Gegenüber dem Stand davor (257 Tests) kamen 66 Tests in `tests/test_naming.py` hinzu, dazu einer in `test_modules.py` (dort läuft ein Test je Modul von `aibui`). Angepasst wurden `test_defaults_in_background_mode` und `test_openai_shows_its_own_defaults_and_no_mode_switch` (das Namensfeld ist nun leer statt mit einem Standardnamen gefüllt), `test_every_form_widget_with_a_key_is_kept_alive_between_runs` (Ausnahme `jobs_search`) und der Helfer `new_openai_app()` (er schaltet die Namensvergabe aus, damit nie ein Gemini-Client gebaut wird). Mit Python 3.11 und mit älteren Versionen von Streamlit, google-genai und openai wird nicht mehr getestet. Die GitHub-Actions-Matrix deckt 3.12 ab.
+- Die Aufteilung in Module (Abschnitt 8) wurde zusätzlich ohne die Testsuite geprüft: Ein Vergleich der Syntaxbäume mit dem Stand davor zeigte, dass der Code unverändert verschoben wurde (nur `_base_dir()` ist angepasst, weil nun der Ort des Pakets zählt) und der Oberflächenteil identisch ist. Außerdem lief die App unter einem echten `streamlit run` (Streamlit 1.55.0, 1.56.0 und 1.67.0) gegen eine echte WebSocket-Sitzung ohne Browser: Beide Tabs wurden ohne Ausnahme gezeichnet, und nach einer Änderung an `aibui/config.py` zeigte der nächste Lauf den neuen Wert (die Module wurden neu importiert). Dieser Serverlauf gehört nicht zur Testsuite.
 - „Gespräch fortsetzen“ und die Prompt-Anzeige wurden zusätzlich einmal in einem echten Headless-Chromium gegen die laufende App mit Ersatzdiensten durchgespielt (Klick im Fragment, Tab-Wechsel, Hinweis, Startsperre, zweites Fortsetzen ohne Verschachtelung). Dieser Browsertest gehört nicht zur Testsuite.
 - Der Anbieterwechsel (Gemini, OpenAI, zurück zu Gemini, mit leerem und mit gesetztem OpenAI-Key, auch bei geöffnetem Jobs-Tab) wurde ebenfalls in einem echten Headless-Chromium gegen die laufende App durchgespielt. Modell, Denktiefe, Token-Limit, Prompts und Systemanweisung blieben erhalten, beide Anbieter behielten ihre eigenen Werte. Ohne die Zuweisung vor dem Zeichnen (`FORM_KEYS`) standen nach dem Rückwechsel das Modellfeld leer, das Token-Limit auf 256, die Denktiefe auf „Standard“, und Prompts und Systemanweisung fehlten. Auch dieser Browsertest gehört nicht zur Testsuite.
 - Der GitHub-Workflow (Abschnitt 9.5) wurde mit `actionlint` geprüft, und seine Befehle liefen wie oben beschrieben in frischen Umgebungen. Auf GitHub selbst lief er noch nicht.

@@ -31,15 +31,15 @@ def project_folder_stays_untouched():
     before = snapshot()
     yield
     assert snapshot() == before, ("Ein Test hat conf/ oder data/ im Projektordner verändert. "
-                                  "Testdaten gehören nach GEMINI_UI_HOME (Fixture „home“).")
+                                  "Testdaten gehören nach AI_BATCH_UI_HOME (Fixture „home“).")
 
 
 @pytest.fixture(autouse=True)
 def home(tmp_path, monkeypatch):
-    """Wegwerf-Ordner als Wurzel für conf/ und data/ (GEMINI_UI_HOME) und Dummy-API-Keys für beide Anbieter."""
+    """Wegwerf-Ordner als Wurzel für conf/ und data/ (AI_BATCH_UI_HOME) und Dummy-API-Keys für beide Anbieter."""
     folder = tmp_path / "home"
     folder.mkdir()
-    monkeypatch.setenv("GEMINI_UI_HOME", str(folder))
+    monkeypatch.setenv("AI_BATCH_UI_HOME", str(folder))
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
     return folder
@@ -59,14 +59,14 @@ def no_real_api(monkeypatch):
 
 
 def forget_package():
-    """Entfernt alle Module von gbui aus dem Importspeicher. Der nächste Import rechnet BASE, DATA_DIR usw. neu."""
+    """Entfernt alle Module von aibui aus dem Importspeicher. Der nächste Import rechnet BASE, DATA_DIR usw. neu."""
     for name in [n for n in sys.modules if n == PACKAGE or n.startswith(PACKAGE + ".")]:
         del sys.modules[name]
 
 
 @pytest.fixture(autouse=True)
 def fresh_package(home):
-    """Die Module von gbui berechnen ihre Ordner beim Import aus GEMINI_UI_HOME. Damit jeder Test seinen eigenen Ordner
+    """Die Module von aibui berechnen ihre Ordner beim Import aus AI_BATCH_UI_HOME. Damit jeder Test seinen eigenen Ordner
     sieht, fliegen sie vor und nach jedem Test aus dem Importspeicher. Das gilt auch für die Oberflächentests: Deren
     Hauptskript importiert die Module selbst, und zwar in jedem Test neu."""
     forget_package()
@@ -88,7 +88,7 @@ class StubTime:
 
 
 class AppModule:
-    """Alle Module von gbui als ein Objekt: app.parse_line(...). Ein Name wird der Reihe nach in allen Modulen gesucht.
+    """Alle Module von aibui als ein Objekt: app.parse_line(...). Ein Name wird der Reihe nach in allen Modulen gesucht.
     app.modules["config"] liefert ein Modul selbst, z. B. um dort etwas zu ersetzen."""
 
     def __init__(self, modules):
@@ -103,7 +103,7 @@ class AppModule:
 
 @pytest.fixture
 def app(fresh_package):
-    """Die Logik der App ohne Oberfläche (alle Module von gbui), Ordner aus der Fixture home."""
+    """Die Logik der App ohne Oberfläche (alle Module von aibui), Ordner aus der Fixture home."""
     names = sorted(m.name for m in pkgutil.iter_modules([str(PACKAGE_DIR)]))
     return AppModule({name: importlib.import_module(f"{PACKAGE}.{name}") for name in names})
 

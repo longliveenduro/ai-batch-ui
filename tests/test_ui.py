@@ -341,16 +341,16 @@ def test_legacy_files_in_the_project_folder_are_moved_on_start(use_fake, home):
 def test_folders_are_created_beside_src_whatever_the_working_directory(tmp_path, monkeypatch, use_fake):
     project = tmp_path / "projekt"
     (project / "src").mkdir(parents=True)
-    shutil.copy(APP_PATH, project / "src" / "gemini_batch_ui.py")
+    shutil.copy(APP_PATH, project / "src" / "ai_batch_ui.py")
     package_copy = project / "src" / PACKAGE  # das Paket liegt neben dem Hauptskript
     shutil.copytree(PACKAGE_DIR, package_copy, ignore=shutil.ignore_patterns("__pycache__"))
     elsewhere = tmp_path / "anderswo"
     elsewhere.mkdir()
-    monkeypatch.delenv("GEMINI_UI_HOME")  # nur so zählt der Ort der Datei
+    monkeypatch.delenv("AI_BATCH_UI_HOME")  # nur so zählt der Ort der Datei
     monkeypatch.chdir(elsewhere)
     monkeypatch.syspath_prepend(str(project / "src"))  # wie streamlit run: der Ordner des Hauptskripts steht vorn
     use_fake()
-    at = AppTest.from_file(str(project / "src" / "gemini_batch_ui.py"), default_timeout=30)
+    at = AppTest.from_file(str(project / "src" / "ai_batch_ui.py"), default_timeout=30)
     at.run()
     assert not at.exception
     assert (project / "conf").is_dir() and (project / "data").is_dir()
