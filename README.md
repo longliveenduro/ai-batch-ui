@@ -130,7 +130,7 @@ Anderer Port: `streamlit run src/ai_batch_ui.py --server.port 8502`. Beenden mit
 | Prompts | Ein Textfeld, mehrere Prompts durch eine Zeile nur mit `---` trennen. Beginnt ein Prompt mit einem Gesprächsverlauf (aus „Gespräch fortsetzen“), steht der neue Prompt unter `[Mein neuer Prompt]`. Solange dort nichts steht, ist der Start gesperrt. |
 | Denktiefe | Gemini: „Standard“ (kein Parameter, Carbon nutzt dann `medium`), `low`, `medium`, `high`. Voreinstellung `high`. Carbon denkt länger als Argon: `medium` ist laut Google für die meisten Aufgaben richtig, `high` verbraucht die meisten Token. OpenAI: „Standard“ (kein Parameter, es gilt die Voreinstellung des Modells), `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Voreinstellung „Standard“. Welche Stufen ein Modell kennt, hängt vom Modell ab (z. B. kennt `gpt-6-astra` kein `none`). Die API lehnt andere ab, der Fehler steht dann je Prompt im Ergebnis. |
 | Max. Ausgabe-Token | Gemini-Batch: bis 32.768 (Voreinstellung 32.768). Gemini Hintergrund: bis 1.048.576 (Voreinstellung 262.144), über 65.536 setzen Googles Server Long Decode ein, die Eingabe zählt mit (höchstens 1.048.576 minus Eingabe). OpenAI: bis 128.000 (Voreinstellung 32.768), je nach Modell darunter. Denk-Token zählen zum Limit. |
-| Name | Bezeichnung des Eintrags im Verlauf. **Leer lassen** (Voreinstellung): Ein kleines Gemini-Modell erzeugt den Namen aus dem Anfang der Prompts (Grenzen: `NAME_SOURCE_PROMPTS` und `NAME_SOURCE_CHARS`, nie die PDFs oder die Systemanweisung), bei einer Gesprächsfortsetzung nur aus dem neuen Prompt. Der Platzhalter sagt, was passiert: „automatisch aus dem Prompt“ oder, wenn die Namensvergabe aus ist oder der Gemini API-Key fehlt, der Standardname `<Art>-<Datum>-<Uhrzeit>` (`gemini-…` für einen Gemini-Batch, `background-…` im Modus „Hintergrund“, `openai-…` bei OpenAI). Ein eingetippter Name gilt immer und löst keinen Aufruf aus. Scheitert die Erzeugung, startet der Lauf trotzdem mit dem Standardnamen, und eine Warnung nennt den Grund. Der Name geht beim Start auch an den Anbieter (Anzeigename des Batches), spätere Änderungen bleiben lokal. |
+| Name | Bezeichnung des Eintrags im Verlauf. **Leer lassen** (Voreinstellung): Ein kleines Gemini-Modell erzeugt den Namen aus dem Anfang der Prompts (Grenzen: `NAME_SOURCE_PROMPTS` und `NAME_SOURCE_CHARS`, nie die PDFs oder die Systemanweisung), bei einer Gesprächsfortsetzung nur aus dem neuen Prompt. Der Platzhalter sagt, was passiert: „automatisch aus dem Prompt“ oder, wenn die Namensvergabe aus ist oder der Gemini API-Key fehlt, der Standardname `<Art>-<Datum>-<Uhrzeit>` (`gemini-…` für einen Gemini-Batch, `background-gemini-…` im Modus „Hintergrund“, `openai-…` bei OpenAI). Ein eingetippter Name gilt immer und löst keinen Aufruf aus. Scheitert die Erzeugung, startet der Lauf trotzdem mit dem Standardnamen, und eine Warnung nennt den Grund. Der Name geht beim Start auch an den Anbieter (Anzeigename des Batches), spätere Änderungen bleiben lokal. |
 | Start-Button | Lädt PDFs hoch, sendet bzw. startet. Während dieser Vorbereitung nicht den Tab wechseln, sonst bricht der Start ab. |
 
 Ohne angehängtes PDF werden die Prompts ohne PDF gesendet (steht als Hinweis im Formular).
@@ -407,6 +407,8 @@ Die übrigen Felder (`pdf`, `pdfs`, `prompts`, `system`, `created`, `rows`, `err
 
 **`provider` ist ein Pflichtfeld** (Issue #8): `Gemini` (`PROVIDER_GEMINI`) oder `OpenAI` (`PROVIDER_OPENAI`), in Batch-, Hintergrund- und OpenAI-Einträgen. Neue Einträge schreiben es immer. Ältere Einträge ohne das Feld stammen alle von Gemini (auch die älteren synchronen): `migrate_history()` ergänzt dort beim Start einer Sitzung `provider: Gemini` und schreibt `data/batch_jobs.json` dafür einmal neu (Hinweis im Terminal und als Toast). Gibt es keinen solchen Eintrag, bleibt die Datei unberührt. Sonst ändert sich an den Einträgen nichts, und ein anderer Wert im Feld bleibt stehen. Fehlt das Feld trotzdem (z. B. weil mitten in der Sitzung eine ältere Datei zurückgespielt wurde), gilt der Eintrag als Gemini-Eintrag (`entry_provider()`), bis die nächste Sitzung es ergänzt.
 
+**Standardname im Hintergrund** (Issue #32): Hintergrund-Einträge von vor Issue #32 tragen als Standardnamen `background-<Datum>-<Uhrzeit>`. `migrate_background_labels()` benennt sie beim Start einer Sitzung in `background-gemini-<Datum>-<Uhrzeit>` um (Hinweis im Terminal und als Toast), gleich nach dem Ergänzen von `provider`. Geändert wird nur das Feld `label`, und nur bei Einträgen mit `mode` = `background`, deren Name genau dem alten Muster entspricht (`OLD_BACKGROUND_LABEL`). Eingetippte und aus dem Prompt erzeugte Namen, Batches und ältere synchrone Einträge bleiben, wie sie sind. Bei einem Hintergrund-Lauf geht der Name nicht an Google, die Umbenennung bleibt also rein lokal. Gibt es keinen solchen Eintrag, bleibt die Datei unberührt.
+
 Älterer synchroner Eintrag (den Modus gibt es nicht mehr, vorhandene Einträge bleiben les- und löschbar. Seine Zeilen wuchsen live):
 
 ```json
@@ -438,7 +440,7 @@ Hintergrund-Eintrag (die Felder `state`, `rows`, `error`, `api_model` kommen ers
   "name": "bg-20261112-230500-3f9a",
   "provider": "Gemini",
   "mode": "background",
-  "label": "background-20261112-2305",
+  "label": "background-gemini-20261112-2305",
   "model": "gemini-4-carbon",
   "pdf": "Buch.pdf",
   "pdfs": ["Buch.pdf"],
@@ -475,7 +477,7 @@ Eine Zeile in `rows` (alle Modi und Anbieter, erzeugt von `parse_line()`, bei Op
 
 `secs` gibt es nur in Zeilen älterer synchroner Einträge. `error` ist ein Text (bei Gemini auch das Fehlerobjekt der API, bei OpenAI immer als Text `code: Meldung`). Bei OpenAI ist `usage` das `usage`-Objekt der Antwort, `out` die Ausgabe ohne Denk-Token, `finish` ist `STOP` (Status `completed`), `MAX_TOKENS` (`incomplete` wegen `max_output_tokens`) oder sonst der Grund bzw. Status. Im Hintergrund ist `usage` das `usage`-Objekt der Interaktion (`total_input_tokens` usw., über alle Schritte), der Text die Summe aller Schritte vom Typ `model_output`, `finish` ist `STOP` (Status `completed`), `MAX_TOKENS` (`incomplete`) oder der Status in Großbuchstaben. Übersprungene Prompts eines abgebrochenen Gesprächs (nur ältere synchrone Einträge) haben `error` = „Übersprungen: …“.
 
-`label` ist der Name des Eintrags: eingetippt, aus dem Prompt erzeugt oder der Standardname `<Art>-<Datum>-<Uhrzeit>` (Art: `gemini` für einen Gemini-Batch, `background` oder `openai`; Gemini-Batches von vor Issue #7 heißen `batch-…` und behalten den Namen). `description` ist eine freie Beschreibung. Sie fehlt, bis im Tab „Jobs und Ergebnisse“ einmal „Speichern“ geklickt wurde (leer ist erlaubt). Beide ändert nur dieser Tab, der Anbieter behält den Namen vom Start.
+`label` ist der Name des Eintrags: eingetippt, aus dem Prompt erzeugt oder der Standardname `<Art>-<Datum>-<Uhrzeit>` (Art: `gemini` für einen Gemini-Batch, `background-gemini` im Hintergrund oder `openai`; Gemini-Batches von vor Issue #7 heißen `batch-…` und behalten den Namen, Hintergrund-Einträge von vor Issue #32 heißen `background-…` und bekommen beim Start den neuen Namen `background-gemini-…`). `description` ist eine freie Beschreibung. Sie fehlt, bis im Tab „Jobs und Ergebnisse“ einmal „Speichern“ geklickt wurde (leer ist erlaubt). Beide ändert nur dieser Tab, der Anbieter behält den Namen vom Start.
 
 Ältere Einträge können Felder nicht haben (`system`, `pdfs`, `think`, `group`, `description`, `state`, `rows` …). Neue Felder deshalb **immer optional** lesen (`.get()`). Ausnahme beim Schreiben ist `provider`: Es ist Pflicht (siehe oben). Gelesen wird es trotzdem mit `.get()` (`entry_provider()`), als Sicherheitsnetz.
 
@@ -564,7 +566,7 @@ Ein Modul von `aibui` importiert nur Module, die in dieser Tabelle über ihm ste
 | Datei | Inhalt |
 |---|---|
 | `src/aibui/config.py` | Konstanten (siehe 6.2), `_base_dir()` (Wurzel), `prepare_folders()` (legt `conf/` und `data/` an, übernimmt Altbestand) |
-| `src/aibui/history.py` | `runtime()` (prozessweit: `lock`, die Sperre für den Verlauf), `load_jobs()`, `mutate_jobs(lock, change)`, `migrate_history(lock)` (ergänzt beim Start das Pflichtfeld `provider` in älteren Einträgen) |
+| `src/aibui/history.py` | `runtime()` (prozessweit: `lock`, die Sperre für den Verlauf), `load_jobs()`, `mutate_jobs(lock, change)`, `migrate_history(lock)` (ergänzt beim Start das Pflichtfeld `provider` in älteren Einträgen), `migrate_background_labels(lock)` (benennt beim Start die alten Standardnamen `background-…` von Hintergrund-Einträgen in `background-gemini-…` um, mit der Hilfe `new_background_label()`) |
 | `src/aibui/rows.py` | die gemeinsame Zeilenform: `pick()`, `parse_line()`, `parse_results()` (mit wählbarem Zeilenleser), für den Hintergrund-Modus `as_dict()` und `parse_interaction()` |
 | `src/aibui/drive.py` | `drive_service()` (OAuth, Neuanmeldung bei `RefreshError`), `drive_id()` (ID aus Link), `drive_fetch()` (PDF laden/exportieren) |
 | `src/aibui/gemini.py` | `upload_pdf()` (Files API + `data/pdf_files.json`), `start_batch()` (JSONL bauen, hochladen, `batches.create`) |
@@ -629,7 +631,7 @@ Start    ──► Feld „Name“ leer, Namensvergabe an und Gemini API-Key da?
              ja:   choose_label() → generate_name(): client.models.generate_content(model, contents=Auszug der Prompts,
                    config={system_instruction, thinking_level, max_output_tokens, Zeitlimit}) → clean_name()
                    Scheitert der Aufruf oder kommt kein Text: Standardname, der Start läuft weiter, Warnung mit dem Grund
-             nein: Standardname <Art>-<Datum>-<Uhrzeit> mit Art gemini, background oder openai (ein eingetippter Name gilt immer)
+             nein: Standardname <Art>-<Datum>-<Uhrzeit> mit Art gemini, background-gemini oder openai (ein eingetippter Name gilt immer)
          ──► Der Name geht als label in den Eintrag und als Anzeigename an den Anbieter (Gemini: display_name,
              OpenAI: metadata.description). Danach ist die Suche im Jobs-Tab leer und der Eintrag ausgewählt.
 Jobs-Tab ──► Popover „Name und Beschreibung“: save_details() bzw. generate_title() ändern label und description
@@ -647,6 +649,14 @@ Sitzung  ──► prepare_folders(): Altbestand aus dem Projektordner nach conf
              ja:   mutate_jobs() setzt provider = Gemini bei jedem Eintrag ohne das Feld (unter der Sperre, auf dem
                    frischen Stand der Datei) und schreibt atomar zurück. Hinweis im Terminal und als Toast
              Scheitert das Schreiben (Schreibschutz, gesperrte Datei): Warnung statt Abbruch, die App läuft weiter
+         ──► migrate_background_labels() (gleich danach, im selben Block):
+             load_jobs() prüft, ob Hintergrund-Einträge (mode = background) mit dem alten Standardnamen
+             background-<Datum>-<Uhrzeit> da sind
+             nein: nichts wird geschrieben
+             ja:   mutate_jobs() setzt label = background-gemini-<Datum>-<Uhrzeit> bei jedem solchen Eintrag (unter der
+                   Sperre, auf dem frischen Stand der Datei) und schreibt atomar zurück. Hinweis im Terminal und als Toast.
+                   Eingetippte und erzeugte Namen passen nicht zum Muster und bleiben
+             Scheitert das Schreiben: dieselbe Warnung statt Abbruch, die Einträge behalten ihre Namen
 ```
 
 ### Streamlit-Besonderheiten, die man kennen muss
@@ -670,12 +680,12 @@ Sitzung  ──► prepare_folders(): Altbestand aus dem Projektordner nach conf
 | `system`, `raw` | Systemanweisung, Prompts-Textfeld |
 | `think`, `effort` | Denktiefe bei Gemini bzw. OpenAI (Voreinstellung per `setdefault`) |
 | `max_batch`, `max_bg`, `max_openai` | Ausgabe-Token je Modus bei Gemini bzw. bei OpenAI (Voreinstellung per `setdefault`) |
-| `label_gemini`, `label_background`, `label_openai` | Namensfeld für Gemini-Batch, Gemini im Hintergrund bzw. OpenAI (leer = Name aus dem Prompt oder Standardname) |
+| `label_gemini`, `label_background-gemini`, `label_openai` | Namensfeld für Gemini-Batch, Gemini im Hintergrund bzw. OpenAI (leer = Name aus dem Prompt oder Standardname) |
 | `auto_name`, `name_model`, `name_think` | Einstellungen „Namen der Einträge“ in der Seitenleiste (Voreinstellung per `setdefault`, alle drei in `FORM_KEYS`) |
 | `jobs_search` | Suchfeld im Jobs-Tab. Der Start-Handler leert es, damit der neue Eintrag sichtbar ist, `keep_visible()` nach dem Umbenennen, wenn der Eintrag nicht mehr passt |
 | `sel` | Auswahl im Jobs-Tab (Wert = `entry_label(eintrag)`). Der Start-Handler setzt ihn auf den neuen Eintrag |
 | `drive_pdfs` | `{Anzeigename: Drive-ID}` der geladenen Drive-Liste |
-| `history_checked` | Merker: Der Verlauf wurde in dieser Sitzung schon auf ältere Einträge ohne `provider` geprüft (`migrate_history()` läuft einmal je Sitzung) |
+| `history_checked` | Merker: Der Verlauf wurde in dieser Sitzung schon auf ältere Einträge ohne `provider` und auf alte Standardnamen von Hintergrund-Einträgen geprüft (`migrate_history()` und `migrate_background_labels()` laufen einmal je Sitzung) |
 | `reused_note` | einmaliger Hinweis nach „Eingaben übernehmen“ und „Gespräch fortsetzen“ (wird beim Anzeigen entfernt) |
 | `name_note` | einmaliger Hinweis über der Liste im Jobs-Tab, wenn „Name aus dem Prompt erzeugen“ scheiterte (wird beim Anzeigen entfernt) |
 | `title:<name>`, `descr:<name>` | Felder „Name“ und „Beschreibung“ im Popover „Name und Beschreibung“ je Eintrag (Voreinstellung per `setdefault` aus dem Eintrag, die Callbacks setzen sie nach dem Speichern) |
@@ -754,12 +764,12 @@ pytest tests/test_background.py -k cancel  # einzelne Datei oder Namensausschnit
 | `tests/conftest.py` | Fixtures: `home` (Wegwerf-Ordner als `AI_BATCH_UI_HOME`, Dummy-Keys für beide Anbieter), `fresh_package` (importiert die Module von `aibui` in jedem Test neu, weil sie ihre Ordner beim Import aus `AI_BATCH_UI_HOME` berechnen), `app` (alle Module von `aibui` als ein Objekt), `rt` (Ersatz für `runtime()`), `fake_time` (keine echten Pausen, in allen Modulen). Dazu eine Sperre gegen echte API-Zugriffe und ein Sicherheitsnetz: ändert ein Test `conf/` oder `data/` im Projektordner, schlägt der Lauf am Ende fehl |
 | `tests/fakes.py` | `FakeGemini` (Files API, Batch-API, Interactions API mit `create`, `get` und `cancel`, `models.generate_content` für die Namen, zeichnet Aufrufe auf), `make_interaction` (echte SDK-Interaktion), `make_name_response` (echte SDK-Antwort von `generate_content`), `ApiError`, `InteractionsError`, `FakeDrive`, `install`, `install_drive`. Für OpenAI: `FakeOpenAI` (Files API und Batch API, liefert echte SDK-Objekte `Batch` und `FileObject`), `make_openai_body` (Antwortrumpf wie in der Ausgabedatei), `OpenAIError`, `install_openai` |
 | `tests/helpers.py` | Verlauf lesen und schreiben, Eintrags-Vorlagen (`batch_entry`, `sync_entry`, `background_entry`, `finished_batch`, `finished_background`, `openai_entry`, `finished_openai_batch`, `row`), AppTest-Kürzel (`new_app`, `new_openai_app`, `click`, `set_prompts`, `captions`, `markdown`, `sent_to_browser`) |
-| `tests/test_logic.py` | reine Logik: Parser, Hilfsfunktionen, Ordner und Altbestand, Verlaufsdatei (auch das Ergänzen des Pflichtfelds `provider`), PDF-Upload, Batch-Anfragen, Gesprächsverlauf als Text (Aufbau, Wiedereinlesen, mehrfaches Fortsetzen) |
+| `tests/test_logic.py` | reine Logik: Parser, Hilfsfunktionen, Ordner und Altbestand, Verlaufsdatei (auch das Ergänzen des Pflichtfelds `provider` und das Umbenennen alter Standardnamen von Hintergrund-Einträgen), PDF-Upload, Batch-Anfragen, Gesprächsverlauf als Text (Aufbau, Wiedereinlesen, mehrfaches Fortsetzen) |
 | `tests/test_background.py` | Hintergrund-Modus: Anfrageaufbau (auch gegen das Schema des SDK), Start mit Wiederholung und Aufräumen bei Fehlern, Abfrage (laufend, beendet, `incomplete`, `failed`, `cancelled`, Long-Decode-Schritte), Abbruch, Zeilenparser, Oberfläche (Formular, Start, Jobs-Tab, Übernehmen, Hinweis bei abgeschnittenem Batch; Oberflächentests mit Marker `ui`) |
 | `tests/test_drive.py` | Drive-Anmeldung (Token, Neuanmeldung, Netzwerkfehler) und Laden von Dateien |
-| `tests/test_ui.py` | Oberfläche mit AppTest: Formular, Starts, Jobs-Tab, automatische Prüfung, Übernehmen, Löschen, Altbestand (auch ältere synchrone Einträge) und Ergänzen von `provider` beim Start, Ordnerlage, Prompt-Anzeige, Gespräch fortsetzen (Marker `ui`) |
+| `tests/test_ui.py` | Oberfläche mit AppTest: Formular, Starts, Jobs-Tab, automatische Prüfung, Übernehmen, Löschen, Altbestand (auch ältere synchrone Einträge), Ergänzen von `provider` und Umbenennen alter Standardnamen im Hintergrund beim Start, Ordnerlage, Prompt-Anzeige, Gespräch fortsetzen (Marker `ui`) |
 | `tests/test_openai.py` | OpenAI-Anbindung: Anfrageaufbau, PDF-Upload, Ergebniszeilen, Status und Ergebnisdateien, Anbieter-Schalter, Formularwerte beim Anbieterwechsel (was die App dem Browser schickt), Start, Jobs-Tab, Übernehmen, Fortsetzen. Ein Test prüft, dass die Beispielantworten des Fakes gültige Objekte des SDK sind (Oberflächentests mit Marker `ui`) |
-| `tests/test_naming.py` | Namen und Suche: Text für das Modell, Bereinigung der Antwort, Aufruf von `generate_content` (Modell, Denktiefe, Zeitlimit), Standardname je Anbieter bzw. Modus (`gemini-…`, `background-…`, `openai-…`) und Fallback darauf bei Fehlern und ohne Key, Suche, Dateiname; Oberfläche: Start in allen Modi und auch bei OpenAI, Einstellungen der Seitenleiste, Suche im Jobs-Tab, Name und Beschreibung ändern, Name aus dem Prompt erzeugen (Oberflächentests mit Marker `ui`) |
+| `tests/test_naming.py` | Namen und Suche: Text für das Modell, Bereinigung der Antwort, Aufruf von `generate_content` (Modell, Denktiefe, Zeitlimit), Standardname je Anbieter bzw. Modus (`gemini-…`, `background-gemini-…`, `openai-…`) und Fallback darauf bei Fehlern und ohne Key, Suche, Dateiname; Oberfläche: Start in allen Modi und auch bei OpenAI, Einstellungen der Seitenleiste, Suche im Jobs-Tab, Name und Beschreibung ändern, Name aus dem Prompt erzeugen (Oberflächentests mit Marker `ui`) |
 | `tests/test_modules.py` | Aufbau des Pakets `aibui`: jedes Modul lässt sich einzeln importieren (keine Importzyklen), keines importiert das Hauptskript, auf Modulebene steht kein Streamlit-Aufruf |
 | `tests/test_docs.py` | gleicht README und Code ab: genannte Funktionen, Konstanten, Schlüssel, Versionen, Testdateien, Module von `aibui` |
 | `tests/test_ci.py` | prüft die GitHub-Actions-Datei: Auslöser, Befehle, Python-Versionen laut README, Rechte |
@@ -864,7 +874,8 @@ Die Datei `.github/workflows/tests.yml` führt die Testsuite auf GitHub aus, ohn
 | OpenAI-Batch endet mit `failed`, die Meldung nennt ein Token-Limit | Die Summe der Token aller eingereihten Batches überschreitet das Warteschlangenlimit des Modells | Weniger Prompts oder kürzere PDFs je Batch, warten bis andere Batches fertig sind, Limits der Kontostufe bei OpenAI prüfen. |
 | OpenAI-Batch `expired`, einzelne Prompts mit Fehler | Das Zeitfenster von 24 Stunden reichte nicht für alle Anfragen. Die fertigen Antworten sind geladen | Die fehlenden Prompts mit „Eingaben übernehmen“ erneut starten. |
 | Toast „Verlauf aktualisiert: Pflichtfeld provider (Gemini) bei älteren Einträgen ergänzt“ beim Start | Einträge in `data/batch_jobs.json` stammen von vor Issue #8 und hatten das Feld `provider` noch nicht | Erwartet, es passiert einmal. Die App ergänzt `provider: Gemini`, sonst bleibt alles gleich. |
-| Warnung „Der Verlauf (data/batch_jobs.json) ließ sich nicht aktualisieren“ beim Start | Das Ergänzen von `provider` scheiterte beim Schreiben, meist fehlen Schreibrechte oder ein anderes Programm sperrt die Datei (z. B. ein Sync-Dienst unter Windows). Die Meldung nennt den Grund | Rechte und Sperre prüfen, die Seite neu laden. Bis dahin läuft die App weiter, ältere Einträge gelten als Gemini-Einträge. |
+| Toast „Verlauf aktualisiert: Standardnamen der Hintergrund-Läufe auf background-gemini-… umgestellt“ beim Start | Hintergrund-Einträge in `data/batch_jobs.json` trugen noch den alten Standardnamen `background-<Datum>-<Uhrzeit>` (von vor Issue #32) | Erwartet, es passiert einmal. Die App ändert nur den Namen auf `background-gemini-<Datum>-<Uhrzeit>`, eingetippte und erzeugte Namen bleiben. Im Popover „Name und Beschreibung“ lässt sich jeder Name ändern. |
+| Warnung „Der Verlauf (data/batch_jobs.json) ließ sich nicht aktualisieren“ beim Start | Das Ergänzen von `provider` oder das Umbenennen der alten Standardnamen scheiterte beim Schreiben, meist fehlen Schreibrechte oder ein anderes Programm sperrt die Datei (z. B. ein Sync-Dienst unter Windows). Die Meldung nennt den Grund | Rechte und Sperre prüfen, die Seite neu laden. Bis dahin läuft die App weiter, ältere Einträge gelten als Gemini-Einträge und behalten ihre Namen. |
 | `data/batch_jobs.defekt-<zahl>.json` taucht auf | `data/batch_jobs.json` war beschädigt, die App hat sie gesichert und neu begonnen | Sicherung prüfen, ggf. Einträge von Hand zurückkopieren. |
 | Verlauf leer nach dem Wechsel auf `conf/` und `data/` oder nach der Umbenennung (Issue #18) | Alte `batch_jobs.json` lag nicht im Projektordner, oder `AI_BATCH_UI_HOME` zeigt woanders hin bzw. ist nicht gesetzt (bis Issue #18 hieß die Variable `GEMINI_UI_HOME`, der alte Name gilt nicht mehr) | Datei von Hand nach `data/` kopieren bzw. `AI_BATCH_UI_HOME` prüfen. |
 | `ModuleNotFoundError: No module named 'aibui'` | Das Hauptskript steht ohne den Ordner `aibui/` daneben (z. B. nur die eine Datei kopiert) | Den Ordner `aibui/` neben `ai_batch_ui.py` legen und mit `streamlit run src/ai_batch_ui.py` starten (Abschnitt 7). |
