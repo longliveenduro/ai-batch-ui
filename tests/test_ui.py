@@ -7,8 +7,8 @@ from streamlit.testing.v1 import AppTest
 
 from fakes import ApiError, FakeDrive, FakeGemini, install, install_drive
 from helpers import (APP_PATH, MODE_BATCH, MODE_BG, PACKAGE, PACKAGE_DIR, PROVIDER_GEMINI, TAB_JOBS, TAB_NEW,
-                     background_entry, batch_entry, button, captions, click, finished_batch, history_path, markdown,
-                     new_app, read_history, row, set_prompts, sync_entry, write_history)
+                     background_entry, batch_entry, button, captions, click, finished_background, finished_batch,
+                     history_path, markdown, new_app, read_history, row, set_prompts, sync_entry, write_history)
 
 pytestmark = pytest.mark.ui
 
@@ -441,6 +441,64 @@ def test_the_history_is_checked_once_per_session(use_fake, home):
     assert "provider" not in read_history(home)[0]  # erst die nächste Sitzung ergänzt sie (kein Lesen bei jedem Lauf)
     assert not any("Verlauf aktualisiert" in t.value for t in at.toast)
     assert any("Denktiefe high" in c for c in captions(at))  # der Eintrag öffnet sich trotzdem: Rückfall auf Gemini
+
+
+# ---------- Verlauf: Standardnamen im Hintergrund (Issue #32) ----------
+def test_old_default_names_of_background_runs_are_renamed_on_start(use_fake, home):
+    entries = [finished_background(name="bg-20261112-230500-aaaa", provider=PROVIDER_GEMINI,
+                                   label="background-20261112-2305"),
+               finished_background(name="bg-20261113-101500-bbbb", provider=PROVIDER_GEMINI, label="Lange Analyse"),
+               finished_batch(provider=PROVIDER_GEMINI, label="background-20261114-0900")]  # ein Batch: bleibt
+    write_history(home, entries)
+    use_fake()
+    at = new_app(TAB_JOBS)
+    at.run()
+    assert not at.exception and not at.error
+    assert read_history(home) == [{**entries[0], "label": "background-gemini-20261112-2305"}, *entries[1:]]
+    assert any("Verlauf aktualisiert" in t.value and "background-gemini-" in t.value and "(1)" in t.value
+               for t in at.toast)
+    assert any(o.startswith("background-gemini-20261112-2305 (") for o in at.selectbox(key="sel").options)
+
+
+def test_provider_and_default_names_are_both_updated_on_start(use_fake, home):
+    older = finished_background(label="background-20261112-2305")  # im Format von vor Issue #8, ohne provider
+    write_history(home, [older])
+    use_fake()
+    at = new_app(TAB_JOBS)
+    at.run()
+    assert not at.exception and not at.error
+    assert read_history(home) == [{**older, "provider": PROVIDER_GEMINI, "label": "background-gemini-20261112-2305"}]
+    notes = [t.value for t in at.toast if "Verlauf aktualisiert" in t.value]
+    assert len(notes) == 2 and any("provider" in n for n in notes) and any("background-gemini-" in n for n in notes)
+
+
+def test_a_history_with_the_new_default_names_is_not_rewritten_on_start(use_fake, home):
+    write_history(home, [finished_background(provider=PROVIDER_GEMINI, label="background-gemini-20261112-2305")])
+    path = history_path(home)
+    long_ago = 1_000_000_000 * 10**9  # Nanosekunden: schon lange her, eine neue Schreibung fiele auf
+    os.utime(path, ns=(long_ago, long_ago))
+    use_fake()
+    at = new_app(TAB_JOBS)
+    at.run()
+    assert not at.exception and path.stat().st_mtime_ns == long_ago
+    assert not any("Verlauf aktualisiert" in t.value for t in at.toast)
+
+
+def test_a_failing_rename_does_not_stop_the_app(use_fake, home, monkeypatch):
+    older = [finished_background(provider=PROVIDER_GEMINI, label="background-20261112-2305")]
+    write_history(home, older)
+
+    def refuse(*args, **kwargs):
+        raise PermissionError("Zugriff verweigert")
+
+    monkeypatch.setattr(os, "replace", refuse)  # mutate_jobs scheitert beim Zurückschreiben
+    use_fake()
+    at = new_app(TAB_JOBS)
+    at.run()
+    assert not at.exception
+    assert any("nicht aktualisieren" in w.value and "Zugriff verweigert" in w.value for w in at.warning)
+    assert read_history(home) == older  # die Datei bleibt, wie sie war
+    assert any("Denktiefe high" in c for c in captions(at))  # der Eintrag öffnet sich trotzdem, mit dem alten Namen
 
 
 # ---------- Jobs-Tab: ältere synchrone Einträge (den Modus gibt es nicht mehr) ----------

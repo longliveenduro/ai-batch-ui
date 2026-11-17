@@ -64,6 +64,7 @@ def shown_names(at):
 # ---------- Standardname und Text für das Modell ----------
 def test_the_default_label_names_the_kind_and_the_start_time(app):
     assert app.default_label("gemini", datetime(2026, 11, 15, 3, 4)) == "gemini-20261115-0304"
+    assert app.default_label("background-gemini", datetime(2026, 11, 15, 3, 4)) == "background-gemini-20261115-0304"
     assert is_default_name(app.default_label("openai"), "openai")
 
 
@@ -170,8 +171,8 @@ def test_an_empty_field_is_named_from_the_prompts(app):
 ])
 def test_a_failed_naming_falls_back_to_the_default_name_and_says_why(app, fake_args, reason):
     fake = FakeGemini(**fake_args)
-    name, generated, error = app.choose_label("", "background", ["Frage"], lambda: fake, "m", "low")
-    assert is_default_name(name, "background") and not generated and reason in error
+    name, generated, error = app.choose_label("", "background-gemini", ["Frage"], lambda: fake, "m", "low")
+    assert is_default_name(name, "background-gemini") and not generated and reason in error
 
 
 def test_a_failing_client_does_not_stop_the_start_either(app):
@@ -285,19 +286,20 @@ def test_the_default_name_of_a_batch_names_the_provider_not_the_mode(use_gemini,
 
 
 @ui
-def test_a_background_run_keeps_its_own_default_name(use_gemini, home):
+def test_the_default_name_of_a_background_run_names_the_mode_and_the_provider(use_gemini, home):
     use_gemini()
     at = new_app()
     at.run()
     at.checkbox(key="auto_name").set_value(False)
     at.radio(key="mode").set_value(MODE_BG)
     at.run()
-    assert is_default_name(at.text_input(key="label_background").placeholder, "background")
+    placeholder = at.text_input(key="label_background-gemini").placeholder  # background-gemini-… (nicht background-…)
+    assert is_default_name(placeholder, "background-gemini") and not re.match(r"background-\d", placeholder)
     set_prompts(at, "Frage")
     click(at, "Im Hintergrund starten")
     assert not at.exception and not at.error
     entry = read_history(home)[0]
-    assert entry["mode"] == "background" and is_default_name(entry["label"], "background")
+    assert entry["mode"] == "background" and is_default_name(entry["label"], "background-gemini")
 
 
 @ui
@@ -366,7 +368,7 @@ def test_background_runs_are_named_too(use_gemini, home):
     at.run()
     at.radio(key="mode").set_value(MODE_BG)
     at.run()
-    assert at.text_input(key="label_background").placeholder == "automatisch aus dem Prompt"
+    assert at.text_input(key="label_background-gemini").placeholder == "automatisch aus dem Prompt"
     set_prompts(at, "Analysiere alles gründlich")
     click(at, "Im Hintergrund starten")
     assert not at.exception and not at.error

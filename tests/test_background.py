@@ -289,7 +289,7 @@ def test_defaults_in_background_mode(use_fake):
     assert at.number_input(key="max_bg").value == 262144 and at.number_input(key="max_bg").max == 1_048_576
     assert button(at, "Im Hintergrund starten").disabled  # ohne Prompts
     assert any("Hintergrund-Interaktion" in c and "Standardpreis" in c for c in captions(at))
-    name_field = at.text_input(key="label_background")  # leer: Der Name wird erzeugt (hier der Platzhalter dazu)
+    name_field = at.text_input(key="label_background-gemini")  # leer: Der Name wird erzeugt (hier der Platzhalter dazu)
     assert name_field.value == "" and name_field.placeholder == "automatisch aus dem Prompt"
 
 

@@ -279,6 +279,95 @@ def test_migrate_history_loses_no_entry_that_is_added_at_the_same_time(app, home
     assert len(saved) == 15 and all(e["provider"] == PROVIDER_GEMINI for e in saved)
 
 
+# ---------- Verlaufsdatei: Standardnamen im Hintergrund (Issue #32) ----------
+OLD_LABEL, NEW_LABEL = "background-20261112-2305", "background-gemini-20261112-2305"
+
+
+def test_migrate_background_labels_renames_the_old_default_names(app, home, rt):
+    entries = [background_entry(name="bg-1", label=OLD_LABEL, provider=PROVIDER_GEMINI),
+               background_entry(name="bg-2", label="Lange Analyse", provider=PROVIDER_GEMINI),  # erzeugter Name
+               background_entry(name="bg-3", label="background-gemini-20261113-0900", provider=PROVIDER_GEMINI),
+               batch_entry(name="batches/x", label="background-20261114-1000", provider=PROVIDER_GEMINI)]
+    write_history(home, entries)
+    assert app.migrate_background_labels(rt.lock) == 1
+    assert read_history(home) == [{**entries[0], "label": NEW_LABEL}, *entries[1:]]  # nur dieser Name, sonst nichts
+
+
+def test_the_new_name_keeps_the_date_and_the_time_of_the_old_one(app):
+    entry = background_entry(label="background-20261102-0745")
+    assert app.new_background_label(entry) == "background-gemini-20261102-0745"
+
+
+@pytest.mark.parametrize("label", [
+    "lang-lauf", "Analyse der Kapitel", "", None, 7,  # eingetippt, aus dem Prompt erzeugt, leer oder kein Text
+    NEW_LABEL,  # schon der neue Standardname
+    OLD_LABEL + "-neu", "Background-20261112-2305", "background-20261112-23", " " + OLD_LABEL, OLD_LABEL + " ",
+    "x" + OLD_LABEL, "background-2026111-22305", "background-gemini-20261112",  # nur dem Muster ähnlich
+])
+def test_migrate_background_labels_leaves_every_other_name_alone(app, home, rt, label):
+    write_history(home, [background_entry(label=label)])
+    assert app.migrate_background_labels(rt.lock) == 0
+    assert read_history(home) == [background_entry(label=label)]
+
+
+@pytest.mark.parametrize("make", [batch_entry, openai_entry, sync_entry])
+def test_migrate_background_labels_only_touches_background_entries(app, home, rt, make):
+    write_history(home, [make(label=OLD_LABEL)])  # Batch, OpenAI-Batch und älterer synchroner Eintrag heißen so nicht
+    assert app.migrate_background_labels(rt.lock) == 0
+    assert read_history(home) == [make(label=OLD_LABEL)]
+
+
+def test_migrate_background_labels_writes_nothing_when_no_name_needs_it(app, home, rt):
+    write_history(home, [background_entry(label=NEW_LABEL), background_entry(name="bg-2", label="lang-lauf")])
+    path = helpers.history_path(home)
+    long_ago = 1_000_000_000 * 10**9  # Nanosekunden: schon lange her, eine neue Schreibung fiele auf
+    os.utime(path, ns=(long_ago, long_ago))
+    before = path.read_bytes()
+    assert app.migrate_background_labels(rt.lock) == 0
+    assert path.stat().st_mtime_ns == long_ago and path.read_bytes() == before
+    assert not path.with_suffix(".tmp").exists()
+
+
+def test_migrate_background_labels_without_a_history_creates_nothing(app, home, rt):
+    assert app.migrate_background_labels(rt.lock) == 0
+    assert not (home / "data").exists()  # weder Ordner noch Datei
+    write_history(home, [])
+    assert app.migrate_background_labels(rt.lock) == 0 and read_history(home) == []
+
+
+def test_migrate_background_labels_is_repeatable(app, home, rt):
+    write_history(home, [background_entry(label=OLD_LABEL),
+                         background_entry(name="bg-2", label="background-20261113-1000")])
+    assert app.migrate_background_labels(rt.lock) == 2
+    assert app.migrate_background_labels(rt.lock) == 0
+    assert [e["label"] for e in read_history(home)] == [NEW_LABEL, "background-gemini-20261113-1000"]
+
+
+def test_migrate_background_labels_copes_with_odd_content(app, home, rt):
+    write_history(home, ["kein Eintrag", None, background_entry(label=OLD_LABEL)])  # Nicht-Objekte stören nicht
+    assert app.migrate_background_labels(rt.lock) == 1
+    assert read_history(home) == ["kein Eintrag", None, background_entry(label=NEW_LABEL)]
+    helpers.history_path(home).write_text("{}")  # keine Liste: nichts zu tun
+    assert app.migrate_background_labels(rt.lock) == 0 and read_history(home) == {}
+
+
+def test_migrate_background_labels_loses_no_entry_that_is_added_at_the_same_time(app, home, rt):
+    write_history(home, [background_entry(name=f"bg-alt{i}", label=OLD_LABEL) for i in range(5)])
+
+    def add(i):
+        app.mutate_jobs(rt.lock, lambda jobs: jobs.append({"name": f"neu{i}", "provider": PROVIDER_GEMINI}))
+
+    threads = [threading.Thread(target=app.migrate_background_labels, args=(rt.lock,)) for _ in range(5)]
+    threads += [threading.Thread(target=add, args=(i,)) for i in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=20)
+    saved = read_history(home)
+    assert len(saved) == 15
+    assert [e["label"] for e in saved if e["name"].startswith("bg-alt")] == [NEW_LABEL] * 5
+
+
 # ---------- PDF-Upload ----------
 def test_upload_pdf_uploads_once_and_remembers_the_file_by_content(app, home):
     fake = FakeGemini()
