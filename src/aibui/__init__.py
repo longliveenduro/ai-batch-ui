@@ -3,8 +3,7 @@
 Ein Modul importiert nur Module, die in dieser Liste über ihm stehen. So bleibt die Reihenfolge ohne Zyklen:
 
     config         Konstanten, Ordner conf/ und data/
-    history        Verlauf in data/batch_jobs.json (Sperre, Lesen, atomares Schreiben, beim Start Pflichtfeld provider
-                   ergänzen und alte Standardnamen von Hintergrund-Läufen umbenennen)
+    history        Verlauf in data/batch_jobs.json (Sperre, Lesen, atomares Schreiben)
     rows           Ergebniszeilen: gemeinsame Zeilenform, Parser für Gemini
     drive          Google Drive
     gemini         Gemini: PDF hochladen, Batch starten

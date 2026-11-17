@@ -34,7 +34,7 @@ from aibui.config import (BATCH_MAX_OUT, BG_DEFAULT_OUT, BG_MAX_OUT, DEFAULT_MOD
 from aibui.drive import drive_fetch, drive_id, drive_service
 from aibui.forms import delete_entry, entry_label, generate_title, reuse_inputs, save_details
 from aibui.gemini import start_batch, upload_pdf
-from aibui.history import load_jobs, migrate_background_labels, migrate_history, mutate_jobs, runtime
+from aibui.history import load_jobs, mutate_jobs, runtime
 from aibui.naming import choose_label, default_label, search_jobs
 from aibui.openai_batch import start_openai_batch, upload_pdf_openai
 from aibui.providers import batch_info, entry_mode, entry_provider, make_client
@@ -43,29 +43,7 @@ from aibui.views import job_panel
 
 st.set_page_config(page_title="AI Batch UI", layout="wide")
 
-moved = prepare_folders()
-if moved:
-    print("Dateien einsortiert:", ", ".join(moved))
-    st.toast("Dateien einsortiert: " + ", ".join(moved))
-if "history_checked" not in st.session_state:  # einmal je Sitzung: ältere Einträge bekommen provider und neue Namen
-    st.session_state["history_checked"] = True
-    changes = []  # was der Verlauf bekam, je ein Hinweis
-    try:
-        added = migrate_history(runtime().lock)
-        if added:
-            changes.append(f"Pflichtfeld provider ({PROVIDER_GEMINI}) bei älteren Einträgen ergänzt ({added})")
-        renamed = migrate_background_labels(runtime().lock)
-        if renamed:
-            changes.append(f"Standardnamen der Hintergrund-Läufe auf background-gemini-… umgestellt ({renamed})")
-    except Exception as e:  # nichts bricht ab: Ohne das Feld gilt ein Eintrag als Gemini-Eintrag (entry_provider)
-        print(f"Verlauf nicht aktualisiert: {e}")
-        st.warning(f"Der Verlauf (data/batch_jobs.json) ließ sich nicht aktualisieren: {e}. Die App läuft trotzdem, "
-                   "ältere Einträge gelten als Gemini-Einträge und behalten ihre Namen. Die Seite neu zu laden "
-                   "versucht es erneut.")
-    for change in changes:
-        note = f"Verlauf aktualisiert: {change}"
-        print(note)
-        st.toast(note + ".")
+prepare_folders()
 for key in FORM_KEYS:  # hält die Werte am Leben und schickt sie beim erneuten Zeichnen an den Browser
     if key in st.session_state:
         st.session_state[key] = st.session_state[key]

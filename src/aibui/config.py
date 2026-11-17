@@ -5,7 +5,6 @@ dieses Pakets (der Ordner über src/).
 """
 import os
 import re
-import shutil
 from pathlib import Path
 
 
@@ -94,16 +93,6 @@ TALK_MARK = re.compile(  # erkennt genau diese Marken (auch mit Leerzeichen davo
 
 
 def prepare_folders():
-    """conf/ und data/ anlegen und Dateien aus dem Hauptordner (älterer Stand) dorthin verschieben, sofern am Ziel
-    noch nichts liegt. Gibt die verschobenen Dateien als Text zurück."""
+    """conf/ und data/ anlegen, falls sie fehlen."""
     CONF_DIR.mkdir(parents=True, exist_ok=True)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    legacy = [(BASE / n, CONF_DIR) for n in ("credentials.json", "token.json")]
-    legacy += [(BASE / n, DATA_DIR) for n in ("batch_jobs.json", "pdf_files.json")]
-    legacy += [(f, DATA_DIR) for pattern in ("requests_*.jsonl", "batch_jobs.defekt-*.json") for f in BASE.glob(pattern)]
-    moved = []
-    for src, folder in legacy:
-        if src.is_file() and not (folder / src.name).exists():
-            shutil.move(str(src), str(folder / src.name))
-            moved.append(f"{src.name} nach {folder.name}/")
-    return moved
