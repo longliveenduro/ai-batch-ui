@@ -9,7 +9,8 @@ from .talk import parse_conversation
 
 
 def default_label(kind, now=None):
-    """Standardname eines Eintrags: Art und Zeitpunkt des Starts, z. B. batch-20261115-0304."""
+    """Standardname eines Eintrags: Art und Zeitpunkt des Starts, z. B. gemini-20261115-0304. Die App übergibt als Art
+    gemini (Gemini-Batch), background (Gemini im Hintergrund) oder openai (OpenAI-Batch)."""
     return f"{kind}-{now or datetime.now():%Y%m%d-%H%M}"
 
 
