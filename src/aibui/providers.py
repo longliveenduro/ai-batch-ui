@@ -15,8 +15,8 @@ def make_client(provider, api_key):
 
 
 def entry_provider(j):
-    """Anbieter eines Eintrags. Das Feld provider ist Pflicht: Neue Einträge schreiben es immer, ältere ergänzt
-    migrate_history() beim Start. Fehlt es trotzdem (z. B. in einer von Hand zurückgespielten alten Datei) oder ist der
+    """Anbieter eines Eintrags. Das Feld provider ist Pflicht: Neue Einträge schreiben es immer. Einträge von vor
+    Issue #8 haben es nicht (sie stammen alle von Gemini) und werden nicht nachträglich ergänzt. Fehlt es oder ist der
     Wert unbekannt, gilt der Eintrag als Gemini-Eintrag."""
     return PROVIDER_OPENAI if j.get("provider") == PROVIDER_OPENAI else PROVIDER_GEMINI
 

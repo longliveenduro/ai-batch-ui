@@ -7,8 +7,8 @@ from streamlit.testing.v1 import AppTest
 
 from fakes import ApiError, FakeDrive, FakeGemini, install, install_drive
 from helpers import (APP_PATH, MODE_BATCH, MODE_BG, PACKAGE, PACKAGE_DIR, PROVIDER_GEMINI, TAB_JOBS, TAB_NEW,
-                     background_entry, batch_entry, button, captions, click, finished_background, finished_batch,
-                     history_path, markdown, new_app, read_history, row, set_prompts, sync_entry, write_history)
+                     batch_entry, button, captions, click, finished_background, finished_batch, history_path, markdown,
+                     new_app, read_history, row, set_prompts, sync_entry, write_history)
 
 pytestmark = pytest.mark.ui
 
@@ -327,17 +327,18 @@ def test_a_corrupt_history_file_is_backed_up(use_fake, home):
     assert [p.read_text() for p in (home / "data").glob("batch_jobs.defekt-*.json")] == ["{kaputt"]
 
 
-def test_legacy_files_in_the_project_folder_are_moved_on_start(use_fake, home):
+def test_files_in_the_project_folder_are_left_alone_on_start(use_fake, home):
+    # Seit Issue #34 übernimmt die App keine Dateien eines älteren Stands mehr: Sie liegen danach, wo sie lagen
     import json
     (home / "batch_jobs.json").write_text(json.dumps([finished_batch()]))
     (home / "token.json").write_text("{}")
     use_fake()
     at = new_app(TAB_JOBS)
     at.run()
-    assert not at.exception and "Gesicherte Antwort" in markdown(at)
-    assert (home / "data" / "batch_jobs.json").exists() and (home / "conf" / "token.json").exists()
-    assert not (home / "batch_jobs.json").exists() and not (home / "token.json").exists()
-    assert any("einsortiert" in t.value for t in at.toast)
+    assert not at.exception and any("Noch nichts gestartet" in i.value for i in at.info)  # data/ bleibt leer
+    assert (home / "batch_jobs.json").exists() and (home / "token.json").exists()
+    assert not (home / "data" / "batch_jobs.json").exists() and not (home / "conf" / "token.json").exists()
+    assert not at.toast
 
 
 def test_folders_are_created_beside_src_whatever_the_working_directory(tmp_path, monkeypatch, use_fake):
@@ -381,124 +382,25 @@ def test_entries_from_older_versions_still_open(use_fake, home):
     assert any("synchron, 2 Prompts pro Gespräch" in c for c in captions(at)) and "Alte Antwort" in markdown(at)
 
 
-# ---------- Verlauf: Pflichtfeld provider ----------
-def test_older_entries_get_the_provider_on_start(use_fake, home):
-    older = [finished_batch(name="batches/alt1", label="alt-eins"), background_entry(), sync_entry()]
-    write_history(home, older)  # alle im Format von vor Issue #8, ohne provider
-    use_fake()
-    at = new_app(TAB_JOBS)
-    at.run()
-    assert not at.exception and not at.error
-    assert read_history(home) == [{**e, "provider": PROVIDER_GEMINI} for e in older]  # nur das Pflichtfeld kommt dazu
-    assert any("Verlauf aktualisiert" in t.value and "(3)" in t.value for t in at.toast)
-
-
-def test_a_current_history_is_not_rewritten_on_start(use_fake, home):
-    write_history(home, [finished_batch(provider=PROVIDER_GEMINI)])
+# ---------- Verlauf: keine Migrationen (Issue #34) ----------
+def test_the_start_leaves_older_entries_as_they_are(use_fake, home):
+    # von vor Issue #8 (ohne provider) und von vor Issue #32 (Standardname background-…): Der Start ändert nichts
+    older = [finished_batch(name="batches/alt1", label="alt-eins"),
+             finished_background(label="background-20261112-2305"), sync_entry()]
+    write_history(home, older)
     path = history_path(home)
     long_ago = 1_000_000_000 * 10**9  # Nanosekunden: schon lange her, eine neue Schreibung fiele auf
     os.utime(path, ns=(long_ago, long_ago))
+    before = path.read_bytes()
     use_fake()
     at = new_app(TAB_JOBS)
     at.run()
-    assert not at.exception and path.stat().st_mtime_ns == long_ago
-    assert not any("Verlauf aktualisiert" in t.value for t in at.toast)
-
-
-def test_the_history_is_updated_even_without_an_api_key(monkeypatch, home):
-    monkeypatch.setenv("GEMINI_API_KEY", "")
-    write_history(home, [finished_batch()])
-    at = new_app()
-    at.run()  # die App wartet auf den Key, der Verlauf ist aber schon ergänzt
-    assert not at.exception and any("API-Key" in i.value for i in at.info)
-    assert read_history(home)[0]["provider"] == PROVIDER_GEMINI
-
-
-def test_a_failing_history_update_does_not_stop_the_app(use_fake, home, monkeypatch):
-    older = [finished_batch()]
-    write_history(home, older)
-
-    def refuse(*args, **kwargs):
-        raise PermissionError("Zugriff verweigert")
-
-    monkeypatch.setattr(os, "replace", refuse)  # mutate_jobs scheitert beim Zurückschreiben
-    use_fake()
-    at = new_app(TAB_JOBS)
-    at.run()
-    assert not at.exception
-    assert any("nicht aktualisieren" in w.value and "Zugriff verweigert" in w.value for w in at.warning)
-    assert read_history(home) == older  # die Datei bleibt, wie sie war
-    assert any("Denktiefe high" in c for c in captions(at))  # der Eintrag öffnet sich trotzdem
-
-
-def test_the_history_is_checked_once_per_session(use_fake, home):
-    use_fake()
-    at = new_app(TAB_JOBS)
-    at.run()
-    write_history(home, [finished_batch()])  # eine ältere Datei, die mitten in der Sitzung zurückgespielt wird
-    at.run()
-    assert not at.exception and not at.error
-    assert "provider" not in read_history(home)[0]  # erst die nächste Sitzung ergänzt sie (kein Lesen bei jedem Lauf)
-    assert not any("Verlauf aktualisiert" in t.value for t in at.toast)
-    assert any("Denktiefe high" in c for c in captions(at))  # der Eintrag öffnet sich trotzdem: Rückfall auf Gemini
-
-
-# ---------- Verlauf: Standardnamen im Hintergrund (Issue #32) ----------
-def test_old_default_names_of_background_runs_are_renamed_on_start(use_fake, home):
-    entries = [finished_background(name="bg-20261112-230500-aaaa", provider=PROVIDER_GEMINI,
-                                   label="background-20261112-2305"),
-               finished_background(name="bg-20261113-101500-bbbb", provider=PROVIDER_GEMINI, label="Lange Analyse"),
-               finished_batch(provider=PROVIDER_GEMINI, label="background-20261114-0900")]  # ein Batch: bleibt
-    write_history(home, entries)
-    use_fake()
-    at = new_app(TAB_JOBS)
-    at.run()
-    assert not at.exception and not at.error
-    assert read_history(home) == [{**entries[0], "label": "background-gemini-20261112-2305"}, *entries[1:]]
-    assert any("Verlauf aktualisiert" in t.value and "background-gemini-" in t.value and "(1)" in t.value
-               for t in at.toast)
-    assert any(o.startswith("background-gemini-20261112-2305 (") for o in at.selectbox(key="sel").options)
-
-
-def test_provider_and_default_names_are_both_updated_on_start(use_fake, home):
-    older = finished_background(label="background-20261112-2305")  # im Format von vor Issue #8, ohne provider
-    write_history(home, [older])
-    use_fake()
-    at = new_app(TAB_JOBS)
-    at.run()
-    assert not at.exception and not at.error
-    assert read_history(home) == [{**older, "provider": PROVIDER_GEMINI, "label": "background-gemini-20261112-2305"}]
-    notes = [t.value for t in at.toast if "Verlauf aktualisiert" in t.value]
-    assert len(notes) == 2 and any("provider" in n for n in notes) and any("background-gemini-" in n for n in notes)
-
-
-def test_a_history_with_the_new_default_names_is_not_rewritten_on_start(use_fake, home):
-    write_history(home, [finished_background(provider=PROVIDER_GEMINI, label="background-gemini-20261112-2305")])
-    path = history_path(home)
-    long_ago = 1_000_000_000 * 10**9  # Nanosekunden: schon lange her, eine neue Schreibung fiele auf
-    os.utime(path, ns=(long_ago, long_ago))
-    use_fake()
-    at = new_app(TAB_JOBS)
-    at.run()
-    assert not at.exception and path.stat().st_mtime_ns == long_ago
-    assert not any("Verlauf aktualisiert" in t.value for t in at.toast)
-
-
-def test_a_failing_rename_does_not_stop_the_app(use_fake, home, monkeypatch):
-    older = [finished_background(provider=PROVIDER_GEMINI, label="background-20261112-2305")]
-    write_history(home, older)
-
-    def refuse(*args, **kwargs):
-        raise PermissionError("Zugriff verweigert")
-
-    monkeypatch.setattr(os, "replace", refuse)  # mutate_jobs scheitert beim Zurückschreiben
-    use_fake()
-    at = new_app(TAB_JOBS)
-    at.run()
-    assert not at.exception
-    assert any("nicht aktualisieren" in w.value and "Zugriff verweigert" in w.value for w in at.warning)
-    assert read_history(home) == older  # die Datei bleibt, wie sie war
-    assert any("Denktiefe high" in c for c in captions(at))  # der Eintrag öffnet sich trotzdem, mit dem alten Namen
+    assert not at.exception and not at.error and not at.warning and not at.toast
+    assert path.stat().st_mtime_ns == long_ago and path.read_bytes() == before
+    options = at.selectbox(key="sel").options
+    assert any(o.startswith("alt-eins (") for o in options)
+    assert any(o.startswith("background-20261112-2305 (") for o in options)  # mit dem alten Namen
+    assert any("Denktiefe high" in c for c in captions(at))  # der Eintrag ohne provider öffnet sich als Gemini-Eintrag
 
 
 # ---------- Jobs-Tab: ältere synchrone Einträge (den Modus gibt es nicht mehr) ----------
