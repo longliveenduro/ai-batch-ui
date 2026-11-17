@@ -201,7 +201,9 @@ with tab_new:
         max_out = c2.number_input("Max. Ausgabe-Token", min_value=256, max_value=BATCH_MAX_OUT, step=1024, key="max_batch",
                                   help="Im Batch-Betrieb begrenzt die API die Ausgabe auf 32768 Token. Mehr geht im "
                                        "Modus „Hintergrund“ (Long Decode).")
-    kind = "openai" if provider == PROVIDER_OPENAI else "background" if bg else "batch"
+    # Art des Eintrags: gibt den Standardnamen (gemini-…, background-…, openai-…) und den Schlüssel des Namensfelds vor.
+    # Ein Batch heißt nach dem Anbieter, denn „batch“ gibt es bei Gemini und bei OpenAI.
+    kind = "openai" if provider == PROVIDER_OPENAI else "background" if bg else "gemini"
     naming_on = auto_name and bool(keys[PROVIDER_GEMINI])  # sonst gilt der Standardname
     label = c3.text_input("Name", key="label_" + kind,
                           placeholder="automatisch aus dem Prompt" if naming_on else default_label(kind),

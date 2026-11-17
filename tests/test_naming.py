@@ -18,7 +18,7 @@ PDF = "application/pdf"
 DEFAULT_NAME = r"{kind}-\d{{8}}-\d{{4}}"  # Standardname: Art, Datum und Uhrzeit des Starts
 
 
-def is_default_name(text, kind="batch"):
+def is_default_name(text, kind="gemini"):
     return re.fullmatch(DEFAULT_NAME.format(kind=kind), text) is not None
 
 
@@ -63,7 +63,7 @@ def shown_names(at):
 
 # ---------- Standardname und Text für das Modell ----------
 def test_the_default_label_names_the_kind_and_the_start_time(app):
-    assert app.default_label("batch", datetime(2026, 11, 15, 3, 4)) == "batch-20261115-0304"
+    assert app.default_label("gemini", datetime(2026, 11, 15, 3, 4)) == "gemini-20261115-0304"
     assert is_default_name(app.default_label("openai"), "openai")
 
 
@@ -146,11 +146,11 @@ def test_generate_name_passes_api_errors_on(app):
 
 # ---------- Welcher Name gilt ----------
 def test_a_typed_name_always_wins_and_asks_no_model(app):
-    assert app.choose_label("  Mein Lauf ", "batch", ["Frage"], never_called, "m", "low") == ("Mein Lauf", False, None)
+    assert app.choose_label("  Mein Lauf ", "gemini", ["Frage"], never_called, "m", "low") == ("Mein Lauf", False, None)
 
 
 def test_with_the_automatic_name_off_the_default_name_is_used(app):
-    name, generated, error = app.choose_label("", "batch", ["Frage"], never_called, "m", "low", auto=False)
+    name, generated, error = app.choose_label("", "gemini", ["Frage"], never_called, "m", "low", auto=False)
     assert is_default_name(name) and not generated and error is None
 
 
@@ -161,7 +161,7 @@ def test_without_a_client_the_default_name_is_used_without_a_complaint(app):
 
 def test_an_empty_field_is_named_from_the_prompts(app):
     fake = FakeGemini(name_text="Kapitel 3 erklärt")
-    assert app.choose_label("", "batch", ["Frage"], lambda: fake, "m", "low") == ("Kapitel 3 erklärt", True, None)
+    assert app.choose_label("", "gemini", ["Frage"], lambda: fake, "m", "low") == ("Kapitel 3 erklärt", True, None)
 
 
 @pytest.mark.parametrize("fake_args, reason", [
@@ -177,7 +177,7 @@ def test_a_failed_naming_falls_back_to_the_default_name_and_says_why(app, fake_a
 def test_a_failing_client_does_not_stop_the_start_either(app):
     def broken():
         raise RuntimeError("Client kaputt")
-    name, generated, error = app.choose_label("", "batch", ["Frage"], broken, "m", "low")
+    name, generated, error = app.choose_label("", "gemini", ["Frage"], broken, "m", "low")
     assert is_default_name(name) and not generated and "Client kaputt" in error
 
 
@@ -238,7 +238,7 @@ def test_the_name_field_starts_empty_and_says_what_happens_with_an_empty_field(u
     use_gemini()
     at = new_app()
     at.run()
-    field = at.text_input(key="label_batch")
+    field = at.text_input(key="label_gemini")
     assert field.value == "" and field.placeholder == "automatisch aus dem Prompt"
 
 
@@ -247,7 +247,7 @@ def test_a_typed_name_is_used_as_it_is_and_the_model_is_not_asked(use_gemini, ho
     fake = use_gemini()
     at = new_app()
     at.run()
-    at.text_input(key="label_batch").set_value("  Mein Lauf ")
+    at.text_input(key="label_gemini").set_value("  Mein Lauf ")
     set_prompts(at, "Frage")
     click(at, "Batch starten")
     assert not at.exception and not at.error
@@ -262,11 +262,42 @@ def test_the_automatic_name_can_be_switched_off(use_gemini, home):
     at.run()
     at.checkbox(key="auto_name").set_value(False)
     at.run()
-    assert is_default_name(at.text_input(key="label_batch").placeholder)  # der Platzhalter zeigt dann den Standardnamen
+    assert is_default_name(at.text_input(key="label_gemini").placeholder)  # der Platzhalter zeigt dann den Standardnamen
     set_prompts(at, "Frage")
     click(at, "Batch starten")
     assert not at.exception and not at.error and not at.warning
     assert is_default_name(read_history(home)[0]["label"]) and fake.name_calls == []
+
+
+@ui
+def test_the_default_name_of_a_batch_names_the_provider_not_the_mode(use_gemini, use_openai):
+    use_gemini()
+    use_openai()
+    at = new_app()
+    at.run()
+    at.checkbox(key="auto_name").set_value(False)
+    at.run()
+    placeholder = at.text_input(key="label_gemini").placeholder  # Gemini-Batch: gemini-… (nicht mehr batch-…)
+    assert is_default_name(placeholder, "gemini") and not placeholder.startswith("batch-")
+    at.radio(key="provider").set_value(PROVIDER_OPENAI)
+    at.run()
+    assert not at.exception and is_default_name(at.text_input(key="label_openai").placeholder, "openai")
+
+
+@ui
+def test_a_background_run_keeps_its_own_default_name(use_gemini, home):
+    use_gemini()
+    at = new_app()
+    at.run()
+    at.checkbox(key="auto_name").set_value(False)
+    at.radio(key="mode").set_value(MODE_BG)
+    at.run()
+    assert is_default_name(at.text_input(key="label_background").placeholder, "background")
+    set_prompts(at, "Frage")
+    click(at, "Im Hintergrund starten")
+    assert not at.exception and not at.error
+    entry = read_history(home)[0]
+    assert entry["mode"] == "background" and is_default_name(entry["label"], "background")
 
 
 @ui
