@@ -1,4 +1,4 @@
-"""Tests der OpenAI-Anbindung (nur Batch): Anfrageaufbau, PDF-Upload, Ergebniszeilen, Statusabfrage und Oberfläche.
+"""Tests der OpenAI-Anbindung (nur Batch): Anfrageaufbau, Datei-Upload, Ergebniszeilen, Statusabfrage und Oberfläche.
 
 Die Antwortrümpfe der Fakes sind nach dem Schema des SDK gültig (siehe test_the_sample_bodies_match_the_sdk_schema).
 Gegen die echte OpenAI-API laufen diese Tests nicht: Wie sie sich verhält, steht unter „Verifikationsstand“ in der README.
@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,7 +19,7 @@ from helpers import (APP_PATH, MODE_BATCH, PROVIDER_GEMINI, PROVIDER_OPENAI, TAB
 
 ui = pytest.mark.ui
 PDF = "application/pdf"
-PDF_IDS = ["file-A", "file-B"]
+FILES = [SimpleNamespace(id="file-A", purpose="user_data"), SimpleNamespace(id="file-B", purpose="user_data")]
 
 
 @pytest.fixture
@@ -74,8 +75,8 @@ def test_openai_client_explains_a_missing_package(app, monkeypatch):
 
 
 # ---------- Anfrageaufbau und Batch ----------
-def test_openai_request_puts_the_pdfs_first_and_sets_all_options(app):
-    body = app.openai_request("gpt-6-astra", PDF_IDS, "Frage", "Sei kurz.", "high", 4096)
+def test_openai_request_puts_the_files_first_and_sets_all_options(app):
+    body = app.openai_request("gpt-6-astra", FILES, "Frage", "Sei kurz.", "high", 4096)
     assert body == {
         "model": "gpt-6-astra", "instructions": "Sei kurz.", "reasoning": {"effort": "high"}, "max_output_tokens": 4096,
         "input": [{"role": "user", "content": [{"type": "input_file", "file_id": "file-A"},
@@ -84,10 +85,26 @@ def test_openai_request_puts_the_pdfs_first_and_sets_all_options(app):
     }
 
 
+def test_openai_request_sends_images_as_input_image_and_keeps_the_order(app):
+    files = [SimpleNamespace(id="file-DOC", purpose="user_data"), SimpleNamespace(id="file-IMG", purpose="vision"),
+             SimpleNamespace(id="file-TXT", purpose="user_data")]
+    content = app.openai_request("gpt-6-astra", files, "Frage", "", "Standard", 2048)["input"][0]["content"]
+    assert content == [{"type": "input_file", "file_id": "file-DOC"}, {"type": "input_image", "file_id": "file-IMG"},
+                       {"type": "input_file", "file_id": "file-TXT"}, {"type": "input_text", "text": "Frage"}]
+
+
+def test_the_openai_file_parts_are_valid_for_the_sdk_schema(app):
+    """Die Teile entsprechen den Parametertypen des SDK (die Batch-Zeilen gehen als rohes JSON an die API)."""
+    from openai.types.responses import ResponseInputFileParam, ResponseInputImageParam
+    for purpose, schema in (("user_data", ResponseInputFileParam), ("vision", ResponseInputImageParam)):
+        part = app.openai_file_part(SimpleNamespace(id="file-X", purpose=purpose))
+        assert set(part) <= set(schema.__annotations__), part
+
+
 def test_openai_request_with_standard_effort_and_no_system_sends_neither(app):
     body = app.openai_request("gpt-6-astra", [], "Frage", "", "Standard", 2048)
     assert "reasoning" not in body and "instructions" not in body
-    assert body["input"][0]["content"] == [{"type": "input_text", "text": "Frage"}]  # ohne PDF nur der Prompt
+    assert body["input"][0]["content"] == [{"type": "input_text", "text": "Frage"}]  # ohne Datei nur der Prompt
 
 
 def test_every_effort_except_standard_is_sent_as_reasoning_effort(app):
@@ -97,13 +114,13 @@ def test_every_effort_except_standard_is_sent_as_reasoning_effort(app):
 
 def test_start_openai_batch_writes_one_jsonl_line_per_prompt_and_creates_the_batch(app):
     fake = FakeOpenAI()
-    batch_id, keyed = app.start_openai_batch(fake, "gpt-6-astra", PDF_IDS, ["P1", "P2"], "Sei kurz.", "high", 32768,
+    batch_id, keyed = app.start_openai_batch(fake, "gpt-6-astra", FILES, ["P1", "P2"], "Sei kurz.", "high", 32768,
                                              "mein-lauf")
     assert batch_id == "batch_fake000001" and keyed == {"prompt-1": "P1", "prompt-2": "P2"}
     assert [r["custom_id"] for r in fake.batch_requests] == ["prompt-1", "prompt-2"]
     first = fake.batch_requests[0]
     assert (first["method"], first["url"]) == ("POST", "/v1/responses")
-    assert first["body"] == app.openai_request("gpt-6-astra", PDF_IDS, "P1", "Sei kurz.", "high", 32768)
+    assert first["body"] == app.openai_request("gpt-6-astra", FILES, "P1", "Sei kurz.", "high", 32768)
     assert fake.file_calls == [{"purpose": "batch", "expires_after": None}]
     assert fake.created_batches == [{"input_file_id": "file-jsonl1", "endpoint": "/v1/responses",
                                      "completion_window": "24h", "metadata": {"description": "mein-lauf"}}]
@@ -123,45 +140,88 @@ def test_a_long_label_is_cut_to_the_metadata_limit(app):
     assert len(fake.created_batches[0]["metadata"]["description"]) == 512
 
 
-# ---------- PDF-Upload ----------
-def test_upload_pdf_openai_uploads_once_and_remembers_the_file_by_content(app, home):
+# ---------- Datei-Upload ----------
+def test_upload_file_openai_uploads_once_and_remembers_the_file_by_content(app, home):
     fake = FakeOpenAI()
-    first = app.upload_pdf_openai(fake, "buch.pdf", b"PDF-A")
-    second = app.upload_pdf_openai(fake, "anderer-name.pdf", b"PDF-A")
+    first = app.upload_file_openai(fake, "buch.pdf", b"PDF-A")
+    second = app.upload_file_openai(fake, "anderer-name.pdf", b"PDF-A")
     assert len(fake.uploads) == 1 and second.id == first.id
     db = json.loads((home / "data" / "openai_files.json").read_text("utf-8"))
     assert db == {hashlib.sha256(b"PDF-A").hexdigest(): first.id}
     assert not (home / "data" / "pdf_files.json").exists()  # die Gemini-Zuordnung bleibt unberührt
 
 
-def test_upload_pdf_openai_sends_the_pdf_as_model_input_and_lets_it_expire(app):
+def test_upload_file_openai_sends_the_pdf_as_model_input_and_lets_it_expire(app):
     fake = FakeOpenAI()
-    app.upload_pdf_openai(fake, "buch", b"X")  # Name ohne Endung
-    assert fake.upload_names == ["buch.pdf"]
+    f = app.upload_file_openai(fake, "buch.pdf", b"X")
+    assert fake.upload_names == ["buch.pdf"] and fake.upload_mimes == ["application/pdf"] and f.purpose == "user_data"
     assert fake.file_calls == [{"purpose": "user_data",
                                 "expires_after": {"anchor": "created_at", "seconds": app.OPENAI_FILE_TTL}}]
 
 
-def test_upload_pdf_openai_different_content_gets_its_own_file(app):
+@pytest.mark.parametrize("name, mime", [
+    ("bericht.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    ("zahlen.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    ("folien.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+    ("tabelle.csv", "text/csv"),
+    ("notiz.md", "text/plain"),
+    ("Code.PY", "text/plain"),
+])
+def test_upload_file_openai_sends_documents_and_text_as_user_data_with_their_own_name(app, name, mime):
     fake = FakeOpenAI()
-    assert app.upload_pdf_openai(fake, "a.pdf", b"A").id != app.upload_pdf_openai(fake, "b.pdf", b"B").id
+    f = app.upload_file_openai(fake, name, b"X")
+    assert (fake.upload_names, fake.upload_mimes) == ([name], [mime])  # die Endung bleibt, daran erkennt OpenAI den Typ
+    assert f.purpose == "user_data" and fake.file_calls[0]["purpose"] == "user_data"
+    assert app.openai_file_part(f) == {"type": "input_file", "file_id": f.id}
+
+
+@pytest.mark.parametrize("name, mime", [("foto.png", "image/png"), ("foto.JPG", "image/jpeg"), ("foto.jpeg", "image/jpeg"),
+                                        ("foto.webp", "image/webp")])
+def test_upload_file_openai_sends_images_for_vision_and_they_become_input_image(app, name, mime):
+    fake = FakeOpenAI()
+    f = app.upload_file_openai(fake, name, b"BILD")
+    assert (fake.upload_names, fake.upload_mimes) == ([name], [mime])
+    assert f.purpose == "vision" and fake.file_calls == [
+        {"purpose": "vision", "expires_after": {"anchor": "created_at", "seconds": app.OPENAI_FILE_TTL}}]
+    assert app.openai_file_part(f) == {"type": "input_image", "file_id": f.id}
+
+
+def test_a_remembered_image_stays_an_input_image_after_a_restart(app):
+    fake = FakeOpenAI()
+    first = app.upload_file_openai(fake, "foto.png", b"BILD")
+    again = app.upload_file_openai(fake, "kopie.png", b"BILD")  # kommt aus der Zuordnung, die Datei fragt OpenAI neu ab
+    assert len(fake.uploads) == 1 and again.id == first.id
+    assert app.openai_file_part(again) == {"type": "input_image", "file_id": first.id}
+
+
+@pytest.mark.parametrize("name", ["archiv.zip", "programm.exe", "LIESMICH"])
+def test_upload_file_openai_rejects_a_type_the_app_does_not_know_before_uploading(app, name):
+    fake = FakeOpenAI()
+    with pytest.raises(ValueError):
+        app.upload_file_openai(fake, name, b"X")
+    assert fake.uploads == [] and fake.file_calls == []
+
+
+def test_upload_file_openai_different_content_gets_its_own_file(app):
+    fake = FakeOpenAI()
+    assert app.upload_file_openai(fake, "a.pdf", b"A").id != app.upload_file_openai(fake, "b.pdf", b"B").id
     assert fake.uploads == [b"A", b"B"]
 
 
-def test_upload_pdf_openai_uploads_again_when_the_file_is_gone(app, home):
+def test_upload_file_openai_uploads_again_when_the_file_is_gone(app, home):
     fake = FakeOpenAI()
-    first = app.upload_pdf_openai(fake, "b.pdf", b"X")
+    first = app.upload_file_openai(fake, "b.pdf", b"X")
     fake.gone.add(first.id)  # bei OpenAI abgelaufen oder gelöscht (404)
-    again = app.upload_pdf_openai(fake, "b.pdf", b"X")
+    again = app.upload_file_openai(fake, "b.pdf", b"X")
     assert len(fake.uploads) == 2 and again.id != first.id
     assert list(json.loads((home / "data" / "openai_files.json").read_text("utf-8")).values()) == [again.id]
 
 
-def test_upload_pdf_openai_uploads_again_when_the_remembered_file_has_an_error_status(app):
+def test_upload_file_openai_uploads_again_when_the_remembered_file_has_an_error_status(app):
     fake = FakeOpenAI()
-    first = app.upload_pdf_openai(fake, "b.pdf", b"X")
+    first = app.upload_file_openai(fake, "b.pdf", b"X")
     fake.file_status[first.id] = "error"
-    app.upload_pdf_openai(fake, "b.pdf", b"X")
+    app.upload_file_openai(fake, "b.pdf", b"X")
     assert len(fake.uploads) == 2
 
 
@@ -585,6 +645,63 @@ def test_a_failing_pdf_upload_to_openai_shows_the_error_and_stores_nothing(use_o
     click(at, "Batch starten")
     assert any("Start fehlgeschlagen" in e.value and "Datei zu groß" in e.value for e in at.error)
     assert read_history(home) == [] and fake.created_batches == []
+
+
+@ui
+def test_openai_batch_start_sends_documents_images_and_text_in_the_order_shown(use_openai, home):
+    fake = use_openai()
+    at = new_openai_app()
+    at.run()
+    docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    at.file_uploader[0].set_value([("Bericht.docx", b"DOCX", docx), ("Foto.png", b"PNG", "image/png"),
+                                   ("Notiz.md", b"# Hallo", "text/markdown")])
+    set_prompts(at, "Frage")
+    click(at, "Batch starten")
+    assert not at.exception and not at.error and "läuft" in at.success[0].value
+    assert fake.upload_names == ["Bericht.docx", "Foto.png", "Notiz.md"]
+    assert [c["purpose"] for c in fake.file_calls] == ["user_data", "vision", "user_data", "batch"]
+    content = fake.batch_requests[0]["body"]["input"][0]["content"]
+    assert [(p["type"], p.get("file_id")) for p in content] == [
+        ("input_file", "file-pdf1"), ("input_image", "file-pdf2"), ("input_file", "file-pdf3"), ("input_text", None)]
+    assert read_history(home)[0]["pdf"] == "Bericht.docx, Foto.png, Notiz.md"  # alle Dateinamen, nicht nur PDFs
+
+
+@ui
+def test_openai_blocks_the_start_for_audio_and_video_and_names_the_files(use_openai, home):
+    fake = use_openai()
+    at = new_openai_app()
+    at.run()
+    at.file_uploader[0].set_value([("Film.mp4", b"MP4", "video/mp4"), ("Buch.pdf", b"PDF", PDF),
+                                   ("Ton.mp3", b"MP3", "audio/mpeg")])
+    set_prompts(at, "Frage")
+    assert len(at.error) == 1
+    message = at.error[0].value
+    assert "Film.mp4" in message and "Ton.mp3" in message and "Buch.pdf" not in message
+    assert "nimmt OpenAI nicht an, nur Gemini" in message and "Der Start ist gesperrt" in message
+    assert button(at, "Batch starten").disabled
+    at.file_uploader[0].set_value([("Buch.pdf", b"PDF", PDF)])  # die Dateien weg, die OpenAI nicht annimmt
+    at.run()
+    assert not at.error and not button(at, "Batch starten").disabled
+    assert fake.uploads == []  # bis hierher wurde nichts hochgeladen
+
+
+@ui
+def test_the_same_files_are_fine_for_gemini_and_blocked_only_while_openai_is_selected(use_openai, monkeypatch):
+    install(monkeypatch, FakeGemini())
+    use_openai()
+    at = new_app()
+    at.session_state["auto_name"] = False
+    at.run()
+    at.file_uploader[0].set_value([("Film.mp4", b"MP4", "video/mp4")])
+    set_prompts(at, "Frage")
+    assert not at.error and not button(at, "Batch starten").disabled  # Gemini nimmt Video an
+    at.radio(key="provider").set_value(PROVIDER_OPENAI)
+    at.run()
+    assert len(at.error) == 1 and button(at, "Batch starten").disabled
+    assert [f.name for f in at.file_uploader[0].value] == ["Film.mp4"]  # der Anbieterwechsel verwirft die Datei nicht
+    at.radio(key="provider").set_value(PROVIDER_GEMINI)
+    at.run()
+    assert not at.error and not button(at, "Batch starten").disabled
 
 
 # ---------- Oberfläche: Jobs-Tab ----------

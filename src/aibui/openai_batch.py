@@ -1,10 +1,11 @@
-"""OpenAI (nur Batch, Endpunkt /v1/responses): PDF hochladen, Batch starten, Ergebnisse lesen."""
+"""OpenAI (nur Batch, Endpunkt /v1/responses): Dateien hochladen, Batch starten, Ergebnisse lesen."""
 import hashlib
 import io
 import json
 import time
 
 from .config import DATA_DIR, DONE, OPENAI_ENDPOINT, OPENAI_FILE_TTL, OPENAI_FILES_DB
+from .files import file_info
 from .rows import parse_results, pick
 
 
@@ -17,8 +18,11 @@ def openai_client(api_key):
     return OpenAI(api_key=api_key)
 
 
-def upload_pdf_openai(client, name, data):
-    """PDF in die OpenAI Files API laden (Zweck user_data). Gleicher Inhalt: gleiche Datei, solange OpenAI sie hält."""
+def upload_file_openai(client, name, data):
+    """Datei in die OpenAI Files API laden. Der Zweck folgt der Doku: Bilder mit vision (als input_image), alles andere
+    mit user_data (als input_file). ValueError bei unbekanntem Typ, siehe file_info(). Gleicher Inhalt: gleiche Datei,
+    solange OpenAI sie hält."""
+    kind, mime = file_info(name)
     key = hashlib.sha256(data).hexdigest()
     db = json.loads(OPENAI_FILES_DB.read_text("utf-8")) if OPENAI_FILES_DB.exists() else {}
     if key in db:
@@ -29,8 +33,8 @@ def upload_pdf_openai(client, name, data):
         except Exception:  # abgelaufen, gelöscht oder aus einem anderen Projekt: neu hochladen
             pass
     f = client.files.create(
-        file=(name if name.lower().endswith(".pdf") else name + ".pdf", io.BytesIO(data), "application/pdf"),
-        purpose="user_data",
+        file=(name, io.BytesIO(data), mime),
+        purpose="vision" if kind == "image" else "user_data",
         expires_after={"anchor": "created_at", "seconds": OPENAI_FILE_TTL},
     )
     db[key] = f.id
@@ -39,10 +43,16 @@ def upload_pdf_openai(client, name, data):
     return f
 
 
-def openai_request(model, pdf_ids, prompt, system, effort, max_out):
-    """Rumpf einer Responses-Anfrage für einen Prompt. Die PDFs stehen ganz vorn, immer in derselben Reihenfolge:
+def openai_file_part(f):
+    """Teil einer Responses-Anfrage für eine hochgeladene Datei: Bilder (Zweck vision) als input_image, alles andere als
+    input_file. Die Datei steht als file_id darin."""
+    return {"type": "input_image" if f.purpose == "vision" else "input_file", "file_id": f.id}
+
+
+def openai_request(model, files, prompt, system, effort, max_out):
+    """Rumpf einer Responses-Anfrage für einen Prompt. Die Dateien stehen ganz vorn, immer in derselben Reihenfolge:
     identischer Prefix fürs automatische Caching."""
-    parts = [{"type": "input_file", "file_id": i} for i in pdf_ids] + [{"type": "input_text", "text": prompt}]
+    parts = [openai_file_part(f) for f in files] + [{"type": "input_text", "text": prompt}]
     body = {"model": model, "input": [{"role": "user", "content": parts}], "max_output_tokens": int(max_out)}
     if system:
         body["instructions"] = system
@@ -51,13 +61,13 @@ def openai_request(model, pdf_ids, prompt, system, effort, max_out):
     return body
 
 
-def start_openai_batch(client, model, pdf_ids, prompts, system, effort, max_out, label):
+def start_openai_batch(client, model, files, prompts, system, effort, max_out, label):
     """JSONL bauen (je Prompt eine Zeile), hochladen, Batch anlegen. Gibt (Batch-ID, Prompts je Schlüssel) zurück."""
     lines, keyed = [], {}
     for i, p in enumerate(prompts, 1):
         key = f"prompt-{i}"
         keyed[key] = p
-        body = openai_request(model, pdf_ids, p, system, effort, max_out)
+        body = openai_request(model, files, p, system, effort, max_out)
         lines.append(json.dumps({"custom_id": key, "method": "POST", "url": OPENAI_ENDPOINT, "body": body},
                                 ensure_ascii=False))
     DATA_DIR.mkdir(parents=True, exist_ok=True)

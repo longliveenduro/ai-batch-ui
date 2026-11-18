@@ -26,10 +26,10 @@ def show_prompt(prompt):
 
 
 def request_details(j):
-    """Die gesendete Anfrage eines Eintrags im Wortlaut: PDFs, Systemanweisung und jeder Prompt. Funktioniert auch,
+    """Die gesendete Anfrage eines Eintrags im Wortlaut: Dateien, Systemanweisung und jeder Prompt. Funktioniert auch,
     solange noch keine Ergebnisse da sind."""
     pdfs = j.get("pdfs") or ([j["pdf"]] if j.get("pdf") else [])
-    st.markdown("**PDFs** (Reihenfolge in jeder Anfrage): "
+    st.markdown("**Dateien** (Reihenfolge in jeder Anfrage): "
                 + (", ".join(f"{k}. {n}" for k, n in enumerate(pdfs, 1)) if pdfs else "keine"))
     st.markdown("**Systemanweisung**")
     if j.get("system"):
@@ -117,7 +117,7 @@ def legacy_sync_panel(j):
 def job_panel(client, j, polling):
     """Status und Ergebnisse. Mit polling=True prüft das Fragment alle POLL_SECONDS Sekunden neu."""
     if st.toggle("Gesendete Anfrage im Detail", key="detail:" + j["name"],
-                 help="PDFs, Systemanweisung und jeden Prompt im Wortlaut, auch solange noch keine Ergebnisse da sind."):
+                 help="Dateien, Systemanweisung und jeden Prompt im Wortlaut, auch solange noch keine Ergebnisse da sind."):
         request_details(j)
     if entry_mode(j) == "sync":
         return legacy_sync_panel(j)

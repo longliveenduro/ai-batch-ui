@@ -1,6 +1,6 @@
 # AI Batch UI
 
-Lokale Streamlit-Oberfläche, um **Gemini 4 Carbon** (`gemini-4-carbon`, der Vorgänger `gemini-4-argon` lässt sich im Feld „Modell“ weiter eintragen) oder ein **OpenAI-Modell** (z. B. `gpt-6-astra`) mit **einem oder mehreren PDFs** und **vielen Prompts** zu benutzen. Es gibt zwei Betriebsarten:
+Lokale Streamlit-Oberfläche, um **Gemini 4 Carbon** (`gemini-4-carbon`, der Vorgänger `gemini-4-argon` lässt sich im Feld „Modell“ weiter eintragen) oder ein **OpenAI-Modell** (z. B. `gpt-6-astra`) mit **einer oder mehreren Dateien** (PDFs, Office-Dokumente, Text, Bilder, bei Gemini auch Audio und Video) und **vielen Prompts** zu benutzen. Es gibt zwei Betriebsarten:
 
 - **Batch** (Gemini und OpenAI): asynchron, 50 % des Standardpreises, Ergebnis nach Minuten bis Stunden (bei OpenAI innerhalb von 24 Stunden).
 - **Hintergrund** (nur Gemini): Jeder Prompt läuft als Hintergrund-Interaktion bei Google (Interactions API, `background=true`). Nur so geht **Long Decode** über 65.536 Ausgabe-Token hinaus (bis 1.048.576 minus Eingabe), etwa wenn Carbon bei hoher Denktiefe das Limit von 32.768 im Batch aufbraucht. Standardpreis statt Batch-Rabatt, die App muss nicht durchgehend laufen.
@@ -34,7 +34,7 @@ Dokumentationsstand: 01.11.2026 (Python 3.12, Streamlit 1.66, google-genai 2.34)
 **Ziele der App**
 
 - **Günstig**: Batch-Rabatt nutzen, und wo möglich das PDF aus dem (impliziten) Cache lesen lassen.
-- **Bequem**: kein Skript pro Lauf. Ein Prompts-Feld, PDF-Upload (auch mehrere) oder PDFs aus Google Drive.
+- **Bequem**: kein Skript pro Lauf. Ein Prompts-Feld, Datei-Upload (auch mehrere, nicht nur PDFs) oder PDFs aus Google Drive.
 - **Nachvollziehbar**: pro Antwort Modell, Abschlussgrund, Eingabe-, Cache-, Denk- und Ausgabe-Token und rohe Nutzungsdaten.
 - **Robust**: Batches und Hintergrund-Läufe laufen bei Google (bis zu 24 Stunden), die App fragt nur den Stand ab. Alles überlebt Tab-Wechsel und Seiten-Neuladen. Ergebnisse werden lokal gesichert.
 
@@ -48,17 +48,17 @@ Dokumentationsstand: 01.11.2026 (Python 3.12, Streamlit 1.66, google-genai 2.34)
 
 - Zwei Anbieter: **Gemini** (Batch und Hintergrund) und **OpenAI** (nur Batch, Endpunkt `/v1/responses`). Der Anbieter für neue Anfragen steht in der Seitenleiste, jeder Verlaufseintrag merkt sich seinen eigenen.
 - Zwei Modi: **Batch** und **Hintergrund** (Hintergrund nur mit Gemini).
-- **Mehrere PDFs** pro Anfrage: Datei-Upload (mehrfach), Auswahl aus Google Drive (Liste der 50 zuletzt geänderten PDFs, mehrfach wählbar) und/oder eingefügte Drive-Links oder Datei-IDs (eine pro Zeile). Google Docs/Slides aus Drive werden als PDF exportiert. Gleiche Dateien werden nur einmal gesendet.
+- **Mehrere Dateien** pro Anfrage (Issue #16: nicht nur PDFs, siehe „Dateien und erlaubte Typen“ in Abschnitt 4): Datei-Upload (mehrfach), Auswahl aus Google Drive (Liste der 50 zuletzt geänderten PDFs, mehrfach wählbar) und/oder eingefügte Drive-Links oder Datei-IDs (eine pro Zeile). Google Docs/Slides aus Drive werden als PDF exportiert. Gleiche Dateien werden nur einmal gesendet.
 - **Mehrere Prompts**, getrennt durch eine Zeile mit `---`. Optional **Systemanweisung**.
 - **Denktiefe** (Gemini: `low`, `medium`, `high`. OpenAI: `none` bis `max`. Jeweils „Standard“ = nichts senden) und **max. Ausgabe-Token**.
 - **Long Decode im Hintergrund (nur Gemini)**: Im Modus „Hintergrund“ startet jeder Prompt als Interaktion mit `background=true` (Interactions API). Googles Server setzen die Antwort in Schritten zu je 64K Token fort, bis zu 1.048.576 Token minus Eingabe. Das löst `MAX_TOKENS` bei hoher Denktiefe, wo ein Batch bei 32.768 Token endet. Die App fragt nur den Stand ab, wie bei einem Batch.
 - **Jobs und Ergebnisse**: Verlauf aller Läufe, automatische Statusprüfung alle 10 Sekunden solange der Tab offen ist, Ergebnisse mit Token- und Cache-Angaben, Markdown-Download, Rohdaten-JSON.
 - **Lokale Sicherung** der Ergebnisse (`data/batch_jobs.json`), auch nach Ablauf der Aufbewahrung bei Google.
 - **Eingaben übernehmen**: Prompts und Einstellungen eines früheren Eintrags zurück ins Formular holen. **Eintrag löschen** (nur lokal).
-- **Namen und Suche** (Issue #23): Bleibt das Feld „Name“ leer, erzeugt ein kleines, günstiges Gemini-Modell (Voreinstellung `gemini-3.5-flash-lite`, Denktiefe `medium`) den Namen aus dem Anfang der Prompts, ähnlich den Titeln im Verlauf eines Chatbots. Name und eine freie Beschreibung lassen sich im Tab „Jobs und Ergebnisse“ jederzeit ändern, bei älteren Einträgen erzeugt ein Klick den Namen aus ihrem Prompt. Die **Suche** über der Liste findet Einträge nach Name, Beschreibung, Prompts, PDF-Namen und ID.
-- **Prompts im Wortlaut**: Im Tab „Jobs und Ergebnisse“ zeigt ein Klick die gesendete Anfrage im Detail (PDFs, Systemanweisung, jeder Prompt, auch solange ein Batch noch keine Ergebnisse hat) und je Ergebnis den vollständigen Prompt.
+- **Namen und Suche** (Issue #23): Bleibt das Feld „Name“ leer, erzeugt ein kleines, günstiges Gemini-Modell (Voreinstellung `gemini-3.5-flash-lite`, Denktiefe `medium`) den Namen aus dem Anfang der Prompts, ähnlich den Titeln im Verlauf eines Chatbots. Name und eine freie Beschreibung lassen sich im Tab „Jobs und Ergebnisse“ jederzeit ändern, bei älteren Einträgen erzeugt ein Klick den Namen aus ihrem Prompt. Die **Suche** über der Liste findet Einträge nach Name, Beschreibung, Prompts, Dateinamen und ID.
+- **Prompts im Wortlaut**: Im Tab „Jobs und Ergebnisse“ zeigt ein Klick die gesendete Anfrage im Detail (Dateien, Systemanweisung, jeder Prompt, auch solange ein Batch noch keine Ergebnisse hat) und je Ergebnis den vollständigen Prompt.
 - **Gespräch fortsetzen**: Zu jeder Antwort erzeugt die App auf Klick den bisherigen Gesprächsverlauf als Text (früherer Prompt und deine Antwort dazu, bei älteren synchronen Gesprächen alle Runden) und legt ihn ins Formular „Neue Anfrage“. Darunter schreibt man den neuen Prompt. Das geht beliebig oft hintereinander, der Verlauf wächst dabei nur um eine Runde.
-- **Wiederverwendung hochgeladener PDFs** über Neustarts hinweg (`data/pdf_files.json` bei Gemini, `data/openai_files.json` bei OpenAI), damit die Datei-Referenz gleich bleibt.
+- **Wiederverwendung hochgeladener Dateien** über Neustarts hinweg (`data/pdf_files.json` bei Gemini, `data/openai_files.json` bei OpenAI), damit die Datei-Referenz gleich bleibt.
 - **Drive-Anmeldung erneuert sich selbst**, wenn die Freigabe abgelaufen ist.
 - **Aufgeräumte Ordner**: Zugangsdaten in `conf/`, erzeugte Daten in `data/`.
 
@@ -105,7 +105,7 @@ Anderer Port: `streamlit run src/ai_batch_ui.py --server.port 8502`. Beenden mit
 **Erster Lauf in 60 Sekunden**
 
 1. Seitenleiste: Anbieter wählen (Gemini oder OpenAI), API-Key prüfen, Modell (`gemini-4-carbon` bzw. `gpt-6-astra`).
-2. Tab „Neue Anfrage“: Modus wählen (nur bei Gemini), PDF hochladen, Prompts eintragen (mehrere mit `---` auf eigener Zeile trennen).
+2. Tab „Neue Anfrage“: Modus wählen (nur bei Gemini), Dateien hochladen, Prompts eintragen (mehrere mit `---` auf eigener Zeile trennen).
 3. „Batch starten“ oder „Im Hintergrund starten“. Der neue Eintrag ist danach im Tab „Jobs und Ergebnisse“ vorausgewählt.
 
 ## 4. Bedienung
@@ -116,7 +116,7 @@ Anderer Port: `streamlit run src/ai_batch_ui.py --server.port 8502`. Beenden mit
 |---|---|
 | Anbieter für neue Anfragen | `Gemini` (Voreinstellung) oder `OpenAI`. Das Formular „Neue Anfrage“ passt sich an: Mit OpenAI entfällt der Modus (es gibt nur Batch), und die Denktiefe kennt die Stufen von OpenAI. Einträge im Tab „Jobs und Ergebnisse“ werden unabhängig von dieser Wahl mit dem Anbieter und dem Key abgefragt, zu denen sie gehören. Beim Hin- und Herwechseln merkt sich die App die Werte beider Anbieter (Modell, Denktiefe, Token-Limit), Prompts und Systemanweisung gelten für beide. |
 | Gemini API-Key, OpenAI API-Key | Vorbelegt aus `GEMINI_API_KEY` bzw. `OPENAI_API_KEY`, beide dürfen eingetragen bleiben. Fehlt der Key des gewählten Anbieters, bleibt die App stehen und sagt es. Fehlt der Key des Anbieters eines Verlaufseintrags, sind dort „Status prüfen / Ergebnisse laden“ und „Batch abbrechen“ (bei Hintergrund-Einträgen „Läufe abbrechen“) gesperrt, gesicherte Ergebnisse bleiben sichtbar. |
-| Modell | Freitext, je Anbieter ein eigenes Feld (Voreinstellung `gemini-4-carbon` bzw. `gpt-6-astra`). Bei OpenAI muss das Modell die Batch API und PDF-Eingaben unterstützen. |
+| Modell | Freitext, je Anbieter ein eigenes Feld (Voreinstellung `gemini-4-carbon` bzw. `gpt-6-astra`). Bei OpenAI muss das Modell die Batch API und Dateieingaben (bei Bildern: Bildeingaben) unterstützen. |
 | Namen der Einträge (Ausklapper) | „Name aus dem Prompt erzeugen“ (Voreinstellung an), „Modell für die Namen“ (Voreinstellung `gemini-3.5-flash-lite`) und „Denktiefe für die Namen“ (`minimal`, `low`, `medium`, `high`, Voreinstellung `medium`). Die Namen entstehen immer mit Gemini und dem Gemini API-Key über die normale Gemini API von Google (ein einfacher `generate_content`-Aufruf, kein Batch, kein Vertex AI), auch bei einem OpenAI-Lauf (zum Datenschutz siehe Abschnitt 12). Ohne Gemini API-Key bekommt jeder neue Eintrag den Standardnamen. |
 
 ### Tab „Neue Anfrage“
@@ -124,25 +124,53 @@ Anderer Port: `streamlit run src/ai_batch_ui.py --server.port 8502`. Beenden mit
 | Element | Bedeutung |
 |---|---|
 | Modus | Batch (asynchron, günstiger) oder Hintergrund (Long Decode: jeder Prompt läuft als Interaktion bei Google, Standardpreis). Mit OpenAI gibt es nur Batch, der Schalter entfällt. |
-| PDF-Dateien | Mehrere Dateien möglich. Ein zweites PDF ersetzt das erste nicht. |
+| Dateien | Mehrere Dateien möglich, eine zweite ersetzt die erste nicht. Das Feld nimmt jeden Typ an. Ob der gewählte Anbieter ihn annimmt, prüft die App nach der Endung (siehe „Dateien und erlaubte Typen“ unten). |
 | PDFs aus Google Drive | Button „Meine PDFs aus Drive laden“ füllt die Mehrfachauswahl. Zusätzlich Links oder Datei-IDs einfügen. Reihenfolge: hochgeladene Dateien, dann Drive-Auswahl, dann eingefügte Links. Die Reihenfolge steht als Hinweis unter dem Bereich. |
 | Systemanweisung | Optional, gilt für jede Anfrage. |
 | Prompts | Ein Textfeld, mehrere Prompts durch eine Zeile nur mit `---` trennen. Beginnt ein Prompt mit einem Gesprächsverlauf (aus „Gespräch fortsetzen“), steht der neue Prompt unter `[Mein neuer Prompt]`. Solange dort nichts steht, ist der Start gesperrt. |
 | Denktiefe | Gemini: „Standard“ (kein Parameter, Carbon nutzt dann `medium`), `low`, `medium`, `high`. Voreinstellung `high`. Carbon denkt länger als Argon: `medium` ist laut Google für die meisten Aufgaben richtig, `high` verbraucht die meisten Token. OpenAI: „Standard“ (kein Parameter, es gilt die Voreinstellung des Modells), `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Voreinstellung „Standard“. Welche Stufen ein Modell kennt, hängt vom Modell ab (z. B. kennt `gpt-6-astra` kein `none`). Die API lehnt andere ab, der Fehler steht dann je Prompt im Ergebnis. |
 | Max. Ausgabe-Token | Gemini-Batch: bis 32.768 (Voreinstellung 32.768). Gemini Hintergrund: bis 1.048.576 (Voreinstellung 262.144), über 65.536 setzen Googles Server Long Decode ein, die Eingabe zählt mit (höchstens 1.048.576 minus Eingabe). OpenAI: bis 128.000 (Voreinstellung 32.768), je nach Modell darunter. Denk-Token zählen zum Limit. |
-| Name | Bezeichnung des Eintrags im Verlauf. **Leer lassen** (Voreinstellung): Ein kleines Gemini-Modell erzeugt den Namen aus dem Anfang der Prompts (Grenzen: `NAME_SOURCE_PROMPTS` und `NAME_SOURCE_CHARS`, nie die PDFs oder die Systemanweisung), bei einer Gesprächsfortsetzung nur aus dem neuen Prompt. Der Platzhalter sagt, was passiert: „automatisch aus dem Prompt“ oder, wenn die Namensvergabe aus ist oder der Gemini API-Key fehlt, der Standardname `<Art>-<Datum>-<Uhrzeit>` (`gemini-…` für einen Gemini-Batch, `background-gemini-…` im Modus „Hintergrund“, `openai-…` bei OpenAI). Ein eingetippter Name gilt immer und löst keinen Aufruf aus. Scheitert die Erzeugung, startet der Lauf trotzdem mit dem Standardnamen, und eine Warnung nennt den Grund. Der Name geht beim Start auch an den Anbieter (Anzeigename des Batches), spätere Änderungen bleiben lokal. |
-| Start-Button | Lädt PDFs hoch, sendet bzw. startet. Während dieser Vorbereitung nicht den Tab wechseln, sonst bricht der Start ab. |
+| Name | Bezeichnung des Eintrags im Verlauf. **Leer lassen** (Voreinstellung): Ein kleines Gemini-Modell erzeugt den Namen aus dem Anfang der Prompts (Grenzen: `NAME_SOURCE_PROMPTS` und `NAME_SOURCE_CHARS`, nie die Dateien oder die Systemanweisung), bei einer Gesprächsfortsetzung nur aus dem neuen Prompt. Der Platzhalter sagt, was passiert: „automatisch aus dem Prompt“ oder, wenn die Namensvergabe aus ist oder der Gemini API-Key fehlt, der Standardname `<Art>-<Datum>-<Uhrzeit>` (`gemini-…` für einen Gemini-Batch, `background-gemini-…` im Modus „Hintergrund“, `openai-…` bei OpenAI). Ein eingetippter Name gilt immer und löst keinen Aufruf aus. Scheitert die Erzeugung, startet der Lauf trotzdem mit dem Standardnamen, und eine Warnung nennt den Grund. Der Name geht beim Start auch an den Anbieter (Anzeigename des Batches), spätere Änderungen bleiben lokal. |
+| Start-Button | Lädt die Dateien hoch, sendet bzw. startet. Während dieser Vorbereitung nicht den Tab wechseln, sonst bricht der Start ab. |
 
-Ohne angehängtes PDF werden die Prompts ohne PDF gesendet (steht als Hinweis im Formular).
+Ohne angehängte Datei werden die Prompts ohne Datei gesendet (steht als Hinweis im Formular).
+
+### Dateien und erlaubte Typen (Issue #16)
+
+Das Feld „Dateien“ nimmt jede Datei an. Ob der **gewählte Anbieter** sie annimmt, prüft die App nach der **Endung** (Groß- und Kleinschreibung egal, maßgeblich ist die letzte Endung). Nimmt er eine Datei nicht an, steht unter dem Feld ein Fehler mit den Dateinamen, und der Start ist gesperrt, bis sie entfernt sind. Wechselt man den Anbieter, bleiben die Dateien im Feld, nur die Prüfung ändert sich. Die Typen stehen an einer Stelle, in `src/aibui/files.py`: `FILE_TYPES` (Endung → Art und MIME-Typ), `TEXT_EXTENSIONS` (die Endungen der Textdateien) und `PROVIDER_KINDS` (welche Arten ein Anbieter annimmt).
+
+| Art | Endungen | Gemini | OpenAI |
+|---|---|---|---|
+| Dokumente | `.pdf`, `.docx`, `.doc`, `.odt`, `.pptx`, `.ppt`, `.xlsx`, `.xls`, `.csv` | ja | ja |
+| Text | `.txt`, `.md`, `.json`, `.html`, `.xml`, `.py`, `.sql` und weitere (alle in `TEXT_EXTENSIONS`) | ja, als `text/plain` | ja |
+| Bilder | `.png`, `.jpg`, `.jpeg`, `.webp` | ja | ja |
+| Audio | `.mp3`, `.wav`, `.m4a`, `.aac`, `.ogg`, `.flac`, `.aiff` | ja | nein |
+| Video | `.mp4`, `.mov`, `.avi`, `.webm`, `.wmv`, `.mpeg`, `.mpg`, `.3gp` | ja | nein |
+
+So steht jede Art in der Anfrage. Die Datei selbst geht immer zuerst in die Files API des Anbieters und steht in der Anfrage nur als Verweis (die Anfragedatei bleibt klein):
+
+| Anfrage | Dokumente und Text | Bilder | Audio und Video |
+|---|---|---|---|
+| Gemini, Batch | `file_data` mit `file_uri` und dem MIME-Typ, den die Files API für die Datei führt | wie Dokumente | wie Dokumente |
+| Gemini, Hintergrund | `document` mit `uri` und `mime_type` | `image` | `audio` bzw. `video` |
+| OpenAI, Batch | `input_file` mit `file_id` (Zweck `user_data`) | `input_image` mit `file_id` (Zweck `vision`) | nicht möglich |
+
+Gut zu wissen:
+
+- Der Typ folgt aus der Endung, nicht aus dem Inhalt. Die App prüft auch keine Größen: Bei OpenAI sind es unter 50 MB je Datei und zusammen höchstens 50 MB je Anfrage, das Datei-Feld von Streamlit nimmt standardmäßig bis 200 MB je Datei (Abschnitt 6.3).
+- Ob ein **Modell** einen Typ annimmt, hängt vom Modell ab. Laut Modellseite von Gemini 4 Carbon nimmt es neben PDF und Text auch Office- und OpenDocument-Dateien an, andere Modelle womöglich nur PDF und Text. Meldet die API einen Fehler zu einer Datei, hilft meist ein Export als PDF.
+- Bei OpenAI liest das Modell von Dokumenten, die kein PDF sind, nur den Text: Bilder und Diagramme in Word- oder PowerPoint-Dateien gehen verloren (dafür als PDF exportieren). Von Tabellen liest es je Blatt nur die ersten 1.000 Zeilen.
+- Google Drive bleibt bei PDFs (und Google-Dokumenten als PDF-Export, Abschnitt 11).
+- Die Hilfe (?) am Feld nennt alle Endungen. Sie ist für beide Anbieter gleich, denn ein Text, der sich beim Anbieterwechsel ändert, würde das Feld neu aufbauen und seine Dateien verwerfen (die Kennung eines Widgets ohne `key` hängt auch vom Hilfetext ab).
 
 ### Tab „Jobs und Ergebnisse“
 
-- **Suche** (über der Liste, sobald es Einträge gibt): Jedes Suchwort muss vorkommen, Groß- und Kleinschreibung und Reihenfolge sind egal. Durchsucht werden Name, Beschreibung, ID, PDF-Namen und Prompts, nicht die Antworten. Die Liste zeigt dann nur die Treffer („Treffer: n von m Einträgen.“), ohne Treffer steht ein Hinweis da. Ein neu gestarteter Eintrag leert die Suche, damit er sichtbar und vorausgewählt ist.
+- **Suche** (über der Liste, sobald es Einträge gibt): Jedes Suchwort muss vorkommen, Groß- und Kleinschreibung und Reihenfolge sind egal. Durchsucht werden Name, Beschreibung, ID, Dateinamen und Prompts, nicht die Antworten. Die Liste zeigt dann nur die Treffer („Treffer: n von m Einträgen.“), ohne Treffer steht ein Hinweis da. Ein neu gestarteter Eintrag leert die Suche, damit er sichtbar und vorausgewählt ist.
 - **Eintrag**: Auswahlliste, neuester Eintrag oben. Jeder Eintrag steht mit seinem Namen, dem Startzeitpunkt und dem Ende der ID da (z. B. „Kapitel 3 einfach erklärt (2026-11-15 03:04) abc123“). Hat der Eintrag eine Beschreibung, steht sie darunter.
 - **Name und Beschreibung** (Popover): ändert den Namen und die freie Beschreibung („Speichern“, ein leerer Name behält den bisherigen) oder erzeugt den Namen neu aus den Prompts des Eintrags („Name aus dem Prompt erzeugen“, nutzt die Einstellungen der Seitenleiste, gesperrt ohne Gemini API-Key). So bekommen auch ältere Einträge mit Standardnamen einen sprechenden Namen. Scheitert die Erzeugung, steht der Grund einmalig als Warnung über der Liste, der Name bleibt. Passt der Eintrag nach dem Umbenennen nicht mehr zur Suche, leert die App die Suche, damit er sichtbar bleibt.
-- **Eingaben übernehmen**: füllt „Neue Anfrage“ mit Prompts, Systemanweisung, Anbieter, Modell, Modus, Denktiefe und Token-Limit. Einträge des früheren Modus „Synchron“ landen im Modus „Hintergrund“ (jeder Prompt läuft dort für sich, der Hinweis nach dem Übernehmen sagt es). PDFs müssen neu angehängt werden, bereits hochgeladene Dateien werden dabei wiederverwendet.
+- **Eingaben übernehmen**: füllt „Neue Anfrage“ mit Prompts, Systemanweisung, Anbieter, Modell, Modus, Denktiefe und Token-Limit. Einträge des früheren Modus „Synchron“ landen im Modus „Hintergrund“ (jeder Prompt läuft dort für sich, der Hinweis nach dem Übernehmen sagt es). Dateien müssen neu angehängt werden, bereits hochgeladene Dateien werden dabei wiederverwendet.
 - **Eintrag löschen** (Bestätigung im Popover): entfernt den lokalen Eintrag samt gesicherter Ergebnisse. Beim Anbieter bleibt alles unverändert. Deaktiviert, solange der Eintrag läuft.
-- **Gesendete Anfrage im Detail** (Schalter, standardmäßig aus): zeigt die PDFs in ihrer Reihenfolge, die Systemanweisung und jeden Prompt im Wortlaut, bei älteren synchronen Gesprächen mit Gespräch und Runde. Das geht auch, solange ein Batch noch läuft und es noch keine Ergebnisse gibt.
+- **Gesendete Anfrage im Detail** (Schalter, standardmäßig aus): zeigt die Dateien in ihrer Reihenfolge, die Systemanweisung und jeden Prompt im Wortlaut, bei älteren synchronen Gesprächen mit Gespräch und Runde. Das geht auch, solange ein Batch noch läuft und es noch keine Ergebnisse gibt.
 - **Batch**: Buttons „Status prüfen / Ergebnisse laden“ und „Batch abbrechen“. Solange der Tab offen und der Batch nicht fertig ist, prüft die App alle 10 Sekunden selbst. Ist der Batch fertig, werden die Ergebnisse geladen und lokal gesichert. Danach braucht ein Öffnen keinen Abruf mehr. Bei OpenAI-Einträgen („Batch (OpenAI)“) zeigt die Statuszeile den Status der Batch API (`validating`, `in_progress`, `finalizing`, `completed`, `failed`, `expired`, `cancelling`, `cancelled`). Bei `expired` und `cancelled` lädt die App die bis dahin fertigen Antworten, die übrigen stehen mit Fehlertext in der Liste. Scheitert der ganze Batch (`failed`, z. B. wegen des Token-Limits der Warteschlange), steht der Grund als Fehlermeldung über den Ergebnissen.
 - **Hintergrund** („Hintergrund (Long Decode)“ in der Kopfzeile): wie beim Batch die Buttons „Status prüfen / Ergebnisse laden“ und „Läufe abbrechen“ und die automatische Prüfung alle 10 Sekunden, solange der Tab offen und nicht alles beendet ist. Je Prompt läuft eine eigene Interaktion bei Google. Die Statuszeile zeigt `in_progress`, solange mindestens eine läuft (dazu „n von m Prompts fertig“), danach `completed` (einzelne Fehler stehen in den Ergebnissen), `cancelled` (alle abgebrochen) oder `failed` (alle fehlgeschlagen). Fertige Antworten erscheinen sofort, auch wenn andere noch laufen. Erst wenn alle beendet sind, sichert die App das Endergebnis lokal. „Läufe abbrechen“ bricht alle Interaktionen ab, bezahlt wird, was bis dahin angefallen ist.
 - **Älterer synchroner Eintrag** („synchron“ in der Kopfzeile): Den Modus gibt es nicht mehr, der Eintrag ist nur noch zu lesen. Gezeigt werden der gesicherte Zustand (`fertig`, `abgebrochen`, `fehlgeschlagen` oder `unterbrochen`, so gilt auch ein Lauf, der beim Beenden der App noch lief) und „n von m Prompts“ mit den gesicherten Ergebnissen, ohne Abfrage und ohne Abbruch-Button. Löschen, „Eingaben übernehmen“ und „Gespräch fortsetzen“ gehen weiter.
@@ -155,13 +183,13 @@ Ohne angehängtes PDF werden die Prompts ohne PDF gesendet (steht als Hinweis im
 **Gespräch fortsetzen.** Gemini behält zwischen zwei Anfragen nichts. Wer ein früheres Gespräch weiterführen will, muss es mitsenden. „Gespräch fortsetzen“ (unter jeder Antwort mit Text) macht das in einem Schritt:
 
 1. Die App baut aus dem früheren Prompt und deiner Antwort dazu einen Text (Format in Abschnitt 7). Bei älteren synchronen Gesprächen (mehrere Prompts pro Gespräch) gehören alle früheren Runden dieses Gesprächs bis zur gewählten Antwort dazu.
-2. Sie legt den Text ins Feld „Prompts“ von „Neue Anfrage“ und übernimmt Systemanweisung, Modus, Denktiefe und Token-Limit des Eintrags. Die PDFs müssen wieder angehängt werden (der Hinweis nennt sie).
+2. Sie legt den Text ins Feld „Prompts“ von „Neue Anfrage“ und übernimmt Systemanweisung, Modus, Denktiefe und Token-Limit des Eintrags. Die Dateien müssen wieder angehängt werden (der Hinweis nennt sie).
 3. Man schreibt den neuen Prompt unter `[Mein neuer Prompt]` und startet. Der Start bleibt gesperrt, solange dort nichts steht.
 
 „Verlaufstext zeigen“ zeigt denselben Text zum Kopieren, z. B. für ein anderes Programm.
 
 - **Beliebig oft**: Setzt man eine Fortsetzung selbst fort, liest die App den Verlauf aus dem gesendeten Prompt zurück und hängt nur die neue Runde an (Runde 1, 2, 3 …). Verläufe werden nicht ineinander geschachtelt.
-- **Kosten**: Der Verlauf geht bei jeder Anfrage als Text mit und zählt als Eingabe. Lange Verläufe kosten entsprechend. Die PDFs stehen weiter an erster Stelle, der gemeinsame Anfang (Prefix) für das implizite Caching bleibt also gleich.
+- **Kosten**: Der Verlauf geht bei jeder Anfrage als Text mit und zählt als Eingabe. Lange Verläufe kosten entsprechend. Die Dateien stehen weiter an erster Stelle, der gemeinsame Anfang (Prefix) für das implizite Caching bleibt also gleich.
 - **Was es technisch ist**: eine einzelne Nutzernachricht mit eingefügtem Verlauf, kein echter Mehr-Runden-Verlauf mit Modellrolle (siehe Abschnitt 11).
 
 ## 5. Kosten sparen: Batch und Caching
@@ -176,7 +204,7 @@ Carbon (`gemini-4-carbon`, seit 10.11.2026) und sein Vorgänger Argon haben laut
 | Denktiefe | `thinking_level` ∈ {`low`, `medium`, `high`}, Standard `medium` | Auswahl „Denktiefe“, „Standard“ sendet nichts |
 | Denk-Token | zählen zum Limit `max_output_tokens` und werden wie Ausgabe-Token berechnet (Preisseite). Carbon kann mehr davon verbrauchen als Argon. Google empfiehlt ein Limit ab 32.768, zum Sparen die Denktiefe zu senken | Warnung bei `MAX_TOKENS`, Voreinstellungen 32.768 (Batch) und 262.144 (Hintergrund) |
 | Explizites Caching | wird für Carbon (wie für Argon) nicht unterstützt, Aufrufe mit `cached_content` entfallen | kein `cached_content` in der App |
-| Implizites Caching | automatisch ab 4.096 Token, gecachte Eingabe-Token 95 % günstiger, keine Garantie | PDFs ganz vorn in fester Reihenfolge |
+| Implizites Caching | automatisch ab 4.096 Token, gecachte Eingabe-Token 95 % günstiger, keine Garantie | Dateien ganz vorn in fester Reihenfolge |
 | Batch | JSONL-Datei mit Zeilen `{"key", "request"}`, 50 % des Standardpreises, Ziel 24 Stunden, Ergebnisse 6 Wochen abrufbar | Batch-Modus |
 | Batch-Ausgabelimit | 32.768 Token, kein Long Decode (API-Fehler sonst: „max_output_tokens cannot exceed 32768“). Der Batch läuft über `generateContent` (nicht streamend: 32.768 je Anfrage), und die Interactions API, die 65.536 und Long Decode kennt, bietet laut Google noch keinen Batch. Beobachtet bei Argon, für Carbon nennt die Doku keinen anderen Wert (ungeprüft). Prüfen lässt es sich so: `BATCH_MAX_OUT` auf `65536` setzen und einen kleinen Batch starten, lehnt die API ab, erscheint der Fehler schon beim Start | Feld im Batch-Modus begrenzt |
 | Ausgabe pro Anfrage | `generateContent`: 32.768 (nicht streamend), 65.536 (streamend). Das SDK setzt automatisch fort (Long Decode), bis 1.048.576 | nicht genutzt: Der Batch bleibt bei 32.768, Long Decode gibt es im Modus „Hintergrund“ |
@@ -190,16 +218,16 @@ Carbon (`gemini-4-carbon`, seit 10.11.2026) und sein Vorgänger Argon haben laut
 Implizites Caching vergleicht den **Anfang (Prefix)** einer Anfrage mit früheren Anfragen. Deshalb gilt in jeder Anfrage dieselbe Reihenfolge:
 
 ```text
-[Systemanweisung]  [PDF 1] [PDF 2] …  [Prompt]
+[Systemanweisung]  [Datei 1] [Datei 2] …  [Prompt]
  ^ stabil           ^ immer gleiche Reihenfolge, ganz vorn      ^ variabel, ganz hinten
 ```
 
-- Nichts Variables (Zeitstempel, IDs, Prompt-Text) vor die PDFs setzen.
-- Andere PDF-Menge oder -Reihenfolge, andere Systemanweisung oder anderes Modell ergeben einen anderen Prefix und damit keine Treffer.
-- Hochgeladene PDFs werden über ihren SHA-256 in `data/pdf_files.json` gemerkt, damit dieselbe Datei-Referenz (URI) auch nach einem Neustart benutzt wird, solange die Files API sie noch hält (derzeit 48 Stunden). Ob Google intern Dateiinhalt oder Datei-Referenz vergleicht, ist nicht dokumentiert. Eine gleiche Referenz ist der sicherere Weg.
+- Nichts Variables (Zeitstempel, IDs, Prompt-Text) vor die Dateien setzen.
+- Andere Dateimenge oder -reihenfolge, andere Systemanweisung oder anderes Modell ergeben einen anderen Prefix und damit keine Treffer.
+- Hochgeladene Dateien werden über ihren SHA-256 in `data/pdf_files.json` gemerkt, damit dieselbe Datei-Referenz (URI) auch nach einem Neustart benutzt wird, solange die Files API sie noch hält (derzeit 48 Stunden). Ob Google intern Dateiinhalt oder Datei-Referenz vergleicht, ist nicht dokumentiert. Eine gleiche Referenz ist der sicherere Weg.
 - **Batch** läuft asynchron, die Verarbeitungszeitpunkte bestimmt Google. Zu implizitem Caching im Batch steht in der Doku nichts. Die Batch-Doku nennt Caching dort nur über `cached_content` (explizit, bei Carbon nicht möglich).
-- **Hintergrund** startet alle Prompts gleichzeitig. Ein Cache-Treffer für die PDFs ist deshalb weniger wahrscheinlich, weil keine erste Anfrage den Cache vorher füllt. Bei Long Decode zählt `total_input_tokens` die Eingabe jedes 64K-Schritts erneut mit (vor allem als Cache-Token) und ist deshalb viel größer als der Kontext. Für dessen Größe gilt: PDF-Token plus Denk- plus Ausgabe-Token.
-- Sicher sparen lässt sich nur, wenn das PDF gar nicht mehrfach gesendet wird (mehrere Fragen in einem Prompt) oder mit einem Modell, das explizites Caching unterstützt. Beides ist in der App nicht eingebaut.
+- **Hintergrund** startet alle Prompts gleichzeitig. Ein Cache-Treffer für die Dateien ist deshalb weniger wahrscheinlich, weil keine erste Anfrage den Cache vorher füllt. Bei Long Decode zählt `total_input_tokens` die Eingabe jedes 64K-Schritts erneut mit (vor allem als Cache-Token) und ist deshalb viel größer als der Kontext. Für dessen Größe gilt: Token der Dateien plus Denk- plus Ausgabe-Token.
+- Sicher sparen lässt sich nur, wenn die Datei gar nicht mehrfach gesendet wird (mehrere Fragen in einem Prompt) oder mit einem Modell, das explizites Caching unterstützt. Beides ist in der App nicht eingebaut.
 
 ### Beobachtung aus der Praxis
 
@@ -211,18 +239,20 @@ Erster Carbon-Batch (12.11.2026, der Eintrag aus Issue #19): Denktiefe `high`, m
 
 | Thema | Verhalten | Folge in der App |
 |---|---|---|
-| Schnittstelle | Die App nutzt nur die Responses API (Batch-Endpunkt `/v1/responses`). Sie nimmt `reasoning` und PDFs als `file_id` entgegen | `OPENAI_ENDPOINT` |
+| Schnittstelle | Die App nutzt nur die Responses API (Batch-Endpunkt `/v1/responses`). Sie nimmt `reasoning` und Dateien als `file_id` entgegen | `OPENAI_ENDPOINT` |
 | Batch | JSONL-Datei mit Zeilen `{"custom_id", "method", "url", "body"}`, 50 % des Standardpreises, Fenster `24h`. Eine Batch-Datei darf nur Anfragen an **ein** Modell enthalten, höchstens 50.000 Anfragen und 200 MB | Batch-Modus, ein Modell je Batch |
-| Warteschlangenlimit | OpenAI begrenzt je Modell und Kontostufe die Summe der Token aller eingereihten Batches. Ein langes PDF zählt in jedem Prompt voll mit. Überschreitet ein Batch das Limit, endet er mit `failed` | Der Fehlertext (typisch `token_limit_exceeded`) steht im Eintrag |
-| PDFs | Files API mit Zweck `user_data`, in der Anfrage als `input_file` mit `file_id`. Pro Datei unter 50 MB, zusammen höchstens 50 MB je Anfrage | `upload_pdf_openai()` |
+| Warteschlangenlimit | OpenAI begrenzt je Modell und Kontostufe die Summe der Token aller eingereihten Batches. Eine lange Datei zählt in jedem Prompt voll mit. Überschreitet ein Batch das Limit, endet er mit `failed` | Der Fehlertext (typisch `token_limit_exceeded`) steht im Eintrag |
+| Dokumente und Text | Files API mit Zweck `user_data`, in der Anfrage als `input_file` mit `file_id`. Pro Datei unter 50 MB, zusammen höchstens 50 MB je Anfrage. Außer bei PDFs liest das Modell nur den Text (Bilder und Diagramme in Word- oder PowerPoint-Dateien gehen verloren), von Tabellen je Blatt nur die ersten 1.000 Zeilen | `upload_file_openai()`, `openai_file_part()` |
+| Bilder | Files API mit Zweck `vision`, in der Anfrage als `input_image` mit `file_id` (`.png`, `.jpg`, `.jpeg`, `.webp`). `detail` wird nicht gesetzt (`auto`) | `upload_file_openai()`, `openai_file_part()` |
+| Audio und Video | nimmt die App bei OpenAI nicht an: Die Dokumentation zu Dateieingaben kennt dafür keine Typen | `check_files()` sperrt den Start |
 | PDF-Token | OpenAI schickt Text **und** Seitenbilder des PDFs ans Modell, das erhöht die Eingabe-Token. `detail` (`auto`, `low`, `high`) steuert die Bildverarbeitung. `auto` bedeutet bei GPT-5.6 und neuer `high`, bei älteren Modellen `low` | `detail` wird nicht gesetzt (Idee in Abschnitt 11) |
 | Denktiefe | `reasoning.effort` mit `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Welche Stufen ein Modell kennt, ist verschieden (`gpt-6-astra` kennt kein `none`) | Auswahl „Denktiefe“ mit allen Stufen, „Standard“ sendet nichts. Die API lehnt unpassende Stufen ab |
 | Denk-Token | zählen zu `max_output_tokens` und sind in `output_tokens` enthalten (`output_tokens_details.reasoning_tokens`) | `parse_openai_line()` trennt sie ab |
-| Caching | automatisch ab 1.024 Token bei gleichem Prefix, ohne Parameter. Bei GPT-5.6 und neuer wird das Schreiben in den Cache gesondert berechnet (`cache_write_tokens` in den Nutzungsdaten) | PDFs ganz vorn. Spalte „Cache“ = `cached_tokens` |
+| Caching | automatisch ab 1.024 Token bei gleichem Prefix, ohne Parameter. Bei GPT-5.6 und neuer wird das Schreiben in den Cache gesondert berechnet (`cache_write_tokens` in den Nutzungsdaten) | Dateien ganz vorn. Spalte „Cache“ = `cached_tokens` |
 | Dateien bei OpenAI | `user_data`-Dateien bleiben bis zum Löschen, wenn man keinen Ablauf setzt (mit Ablauf: 1 Stunde bis 30 Tage) | Ablauf nach 3 Tagen (`OPENAI_FILE_TTL`) |
 | Ergebnisse | `output_file_id` (Antworten) und `error_file_id` (fehlgeschlagene Anfragen). Bei `expired` und `cancelled` liegen dort die bis dahin fertigen Antworten und die übrigen Fehler | `fetch_openai_batch()` liest beide Dateien |
 
-Die **Cache-Strategie** (Reihenfolge `[Systemanweisung] [PDF 1] [PDF 2] … [Prompt]`) gilt bei OpenAI genauso: Die Anfragen eines Batches laufen in unbestimmter Reihenfolge und Zeit, ob und wie oft sie Treffer bekommen, ist unbekannt. Die Preise für Eingabe, Cache-Lesen und Cache-Schreiben stehen je Modell auf der OpenAI-Preisseite.
+Die **Cache-Strategie** (Reihenfolge `[Systemanweisung] [Datei 1] [Datei 2] … [Prompt]`) gilt bei OpenAI genauso: Die Anfragen eines Batches laufen in unbestimmter Reihenfolge und Zeit, ob und wie oft sie Treffer bekommen, ist unbekannt. Die Preise für Eingabe, Cache-Lesen und Cache-Schreiben stehen je Modell auf der OpenAI-Preisseite.
 
 ## 6. Konfiguration
 
@@ -230,7 +260,7 @@ Die **Cache-Strategie** (Reihenfolge `[Systemanweisung] [PDF 1] [PDF 2] … [Pro
 
 - Seitenleiste „Gemini API-Key“ und „OpenAI API-Key“ (Passwortfelder) oder die Umgebungsvariablen `GEMINI_API_KEY` und `OPENAI_API_KEY` (werden als Vorbelegung genutzt). Die Keys werden nicht gespeichert. Gebraucht wird der Key des gewählten Anbieters, dazu der des anderen Anbieters, wenn man dessen Verlaufseinträge abfragen will.
 - Seitenleiste „Anbieter für neue Anfragen“: `Gemini` (Voreinstellung) oder `OpenAI`.
-- Seitenleiste „Modell“, je Anbieter ein eigenes Feld. Gemini, Voreinstellung `gemini-4-carbon`: Andere Modelle sind möglich (z. B. `gemini-4-argon`, laut Google schneller und mit weniger Denk-Token), aber die App ist auf die Gemini-4-Modelle zugeschnitten (Batch-Limit, `thinking_level`-Werte, Caching-Annahmen). OpenAI, Voreinstellung `gpt-6-astra`: Jedes Modell mit Responses API, Batch API und PDF-Eingabe geht, etwa `gpt-6.1-sol` oder `gpt-6-luna` (Namen laut OpenAI-Doku, Stand 10.11.2026).
+- Seitenleiste „Modell“, je Anbieter ein eigenes Feld. Gemini, Voreinstellung `gemini-4-carbon`: Andere Modelle sind möglich (z. B. `gemini-4-argon`, laut Google schneller und mit weniger Denk-Token), aber die App ist auf die Gemini-4-Modelle zugeschnitten (Batch-Limit, `thinking_level`-Werte, Caching-Annahmen). OpenAI, Voreinstellung `gpt-6-astra`: Jedes Modell mit Responses API, Batch API und Dateieingabe (bei Bildern: Bildeingabe) geht, etwa `gpt-6.1-sol` oder `gpt-6-luna` (Namen laut OpenAI-Doku, Stand 10.11.2026).
 - Optional die Umgebungsvariable `AI_BATCH_UI_HOME`: Ordner, unter dem `conf/` und `data/` liegen. Voreinstellung ist der Projektordner (der Ordner über `src/`), unabhängig vom Arbeitsordner. Nützlich für getrennte Datenbestände und für Tests. Bis Issue #18 hieß die Variable `GEMINI_UI_HOME`, der alte Name wird nicht mehr gelesen.
 
 ### 6.2 Konstanten im Code (`src/aibui/config.py`)
@@ -246,8 +276,8 @@ Die **Cache-Strategie** (Reihenfolge `[Systemanweisung] [PDF 1] [PDF 2] … [Pro
 | `DATA_DIR` | `BASE/data` | erzeugte Daten |
 | `CREDENTIALS_FILE`, `TOKEN_FILE` | `conf/credentials.json`, `conf/token.json` | Drive-OAuth-Client und Drive-Login |
 | `HISTORY` | `data/batch_jobs.json` | Verlauf und Ergebnisse |
-| `FILES_DB` | `data/pdf_files.json` | PDF-Hash → Datei in der Gemini Files API |
-| `OPENAI_FILES_DB` | `data/openai_files.json` | PDF-Hash → Datei in der OpenAI Files API |
+| `FILES_DB` | `data/pdf_files.json` | Datei-Hash → Datei in der Gemini Files API (der Dateiname stammt aus der Zeit, als nur PDFs möglich waren) |
+| `OPENAI_FILES_DB` | `data/openai_files.json` | Datei-Hash → Datei in der OpenAI Files API |
 | `SCOPES` | `drive.readonly` | Drive-Berechtigung (nur lesen) |
 | `POLL_SECONDS` | `10` | Abstand der automatischen Prüfung |
 | `DONE` | 4 `JOB_STATE_*`-Endzustände (Gemini) und `completed`, `failed`, `cancelled`, `expired` (OpenAI) | Wann ein Batch als abgeschlossen gilt |
@@ -262,7 +292,7 @@ Die **Cache-Strategie** (Reihenfolge `[Systemanweisung] [PDF 1] [PDF 2] … [Pro
 | `OPENAI_EFFORTS` | Standard, none, minimal, low, medium, high, xhigh, max | Auswahl Denktiefe bei OpenAI (die Stufen von `reasoning.effort`) |
 | `OPENAI_ENDPOINT` | `/v1/responses` | Endpunkt der OpenAI Batch API (JSONL-Zeile und `batches.create`) |
 | `OPENAI_MAX_OUT` | `128_000` | Obergrenze für Ausgabe-Token bei OpenAI, je Modell kann sie niedriger sein |
-| `OPENAI_FILE_TTL` | 3 Tage | Ablauf hochgeladener PDFs bei OpenAI (erlaubt sind 1 Stunde bis 30 Tage) |
+| `OPENAI_FILE_TTL` | 3 Tage | Ablauf hochgeladener Dateien bei OpenAI (erlaubt sind 1 Stunde bis 30 Tage) |
 | `DEFAULT_NAME_MODEL` | `gemini-3.5-flash-lite` | Voreinstellung für das Modell, das die Namen der Einträge erzeugt (immer Gemini, in der Seitenleiste änderbar) |
 | `NAME_THINK_LEVELS`, `DEFAULT_NAME_THINK` | minimal, low, medium, high, Voreinstellung medium | Denktiefe der Namensvergabe. „Standard“ fehlt mit Absicht: Jedes Modell hat eine eigene Voreinstellung (`gemini-3.5-flash-lite` denkt ohne Angabe auf `minimal`), darum wird die Stufe immer gesendet |
 | `NAME_MAX_OUT` | `8192` | Denk- plus Ausgabe-Token des Namensaufrufs (der Name selbst braucht nur wenige) |
@@ -314,7 +344,7 @@ Hinweise:
 |---|---|---|
 | `streamlit` | 1.67.0 | Oberfläche. `st.tabs` kennt mit `key` und `on_change` den aktiven Tab (`.open`), und `AppTest` unterstützt Datei-Uploads. Ältere Versionen werden nicht unterstützt. |
 | `google-genai` | 3.3.0 | Gemini-SDK (Files API, Batch-API, Interactions API für den Hintergrund-Modus). Ältere Versionen werden nicht unterstützt. |
-| `openai` | 3.51.0 | OpenAI-SDK (Files API, Batch API). `files.create` kennt den Parameter `expires_after`, mit dem die App hochgeladene PDFs ablaufen lässt. Wird erst bei OpenAI-Nutzung importiert: Ohne das Paket läuft Gemini weiter, und die App meldet bei OpenAI, was fehlt. Ältere Versionen werden nicht unterstützt. |
+| `openai` | 3.51.0 | OpenAI-SDK (Files API, Batch API). `files.create` kennt den Parameter `expires_after`, mit dem die App hochgeladene Dateien ablaufen lässt. Wird erst bei OpenAI-Nutzung importiert: Ohne das Paket läuft Gemini weiter, und die App meldet bei OpenAI, was fehlt. Ältere Versionen werden nicht unterstützt. |
 | `google-api-python-client`, `google-auth-oauthlib` | beliebig | Drive-Zugriff (werden erst bei Drive-Nutzung importiert) |
 | `pytest` | 8 | nur für die Tests (`requirements-dev.txt`) |
 | `pyyaml` | 6 | nur für die Tests (`requirements-dev.txt`), prüft die Workflow-Datei |
@@ -343,8 +373,8 @@ ai-batch-ui/                        # Projektordner
 └── data/                           # erzeugte Daten
     ├── batch_jobs.json             # Verlauf + Ergebnisse (+ batch_jobs.tmp beim Schreiben)
     ├── batch_jobs.defekt-<ts>.json # Sicherung, falls batch_jobs.json beschädigt war
-    ├── pdf_files.json              # PDF-Hash -> Files-API-Name (Gemini)
-    ├── openai_files.json           # PDF-Hash -> Datei-ID (OpenAI Files API)
+    ├── pdf_files.json              # Datei-Hash -> Files-API-Name (Gemini)
+    ├── openai_files.json           # Datei-Hash -> Datei-ID (OpenAI Files API)
     ├── requests_<unixzeit>.jsonl   # je Gemini-Batch die exakt gesendeten Anfragen
     └── requests_openai_<unixzeit>.jsonl  # dasselbe für OpenAI-Batches
 ```
@@ -387,6 +417,8 @@ Batch-Eintrag (Felder `state`, `rows`, `error`, `api_model` kommen erst, wenn de
   "api_model": "models/gemini-4-carbon"
 }
 ```
+
+`pdf` und `pdfs` heißen so aus der Zeit, als nur PDFs möglich waren. Seit Issue #16 enthalten sie die Namen **aller** angehängten Dateien (Dokumente, Text, Bilder, Audio, Video), in der Reihenfolge der Anfrage. Die Namen blieben, damit ältere Einträge ohne Umstellung lesbar sind.
 
 OpenAI-Eintrag (nur Batch): dieselben Felder, `provider` ist hier `OpenAI`. `name` ist die Batch-ID, `state` der Status der Batch API in Kleinbuchstaben (`completed`, `failed`, `expired`, `cancelled`), `api_model` der von OpenAI gemeldete Modellname:
 
@@ -482,13 +514,15 @@ Eine Zeile in `rows` (alle Modi und Anbieter, erzeugt von `parse_line()`, bei Op
 ### `data/pdf_files.json`
 
 ```json
-{"<sha256 des PDF-Inhalts>": "files/<id der Gemini Files API>"}
+{"<sha256 des Dateiinhalts>": "files/<id der Gemini Files API>"}
 ```
+
+Der Schlüssel ist der SHA-256 des Inhalts, gleich welchen Typs die Datei hat. Der Dateiname stammt aus der Zeit, als nur PDFs hochgeladen wurden. Bei einer wiederverwendeten Datei steht in der Anfrage der MIME-Typ, den die Files API für sie führt.
 
 ### `data/openai_files.json`
 
 ```json
-{"<sha256 des PDF-Inhalts>": "file-<id der OpenAI Files API>"}
+{"<sha256 des Dateiinhalts>": "file-<id der OpenAI Files API>"}
 ```
 
 Getrennt von `pdf_files.json`, weil dieselbe Datei bei jedem Anbieter eine andere Kennung hat. Vor jeder Wiederverwendung fragt die App die Datei bei OpenAI ab und lädt neu hoch, wenn sie abgelaufen oder gelöscht ist (hier nach 3 Tagen).
@@ -500,7 +534,7 @@ Eine Zeile pro Prompt, genau das, was an die Batch-API ging (Anfrageformat `Gene
 ```json
 {"key": "prompt-1", "request": {
   "contents": [{"role": "user", "parts": [
-    {"file_data": {"mime_type": "application/pdf", "file_uri": "https://generativelanguage.googleapis.com/v1beta/files/…"}},
+    {"file_data": {"mime_type": "application/pdf", "file_uri": "https://generativelanguage.googleapis.com/v1beta/files/…"}},  // je Datei, mit ihrem MIME-Typ
     {"text": "Prompt-Text"}]}],
   "generation_config": {"max_output_tokens": 32768, "thinking_config": {"thinking_level": "high"}},
   "system_instruction": {"parts": [{"text": "…"}]}}}
@@ -564,12 +598,13 @@ Ein Modul von `aibui` importiert nur Module, die in dieser Tabelle über ihm ste
 | Datei | Inhalt |
 |---|---|
 | `src/aibui/config.py` | Konstanten (siehe 6.2), `_base_dir()` (Wurzel), `prepare_folders()` (legt `conf/` und `data/` an) |
+| `src/aibui/files.py` | Dateien als Eingabe (Issue #16), ohne Streamlit und SDK: `FILE_TYPES` (Endung → Art und MIME-Typ), `TEXT_EXTENSIONS`, `PROVIDER_KINDS` (welche Arten ein Anbieter annimmt), `file_info()` (Art und MIME-Typ einer Datei, `ValueError` bei unbekanntem Typ), `check_files()` (Meldungen zu Dateien, die der gewählte Anbieter nicht annimmt), `types_overview()` (Hilfetext am Datei-Feld), `mime_kind()` (Art zu einem MIME-Typ, zugleich der Inhaltstyp der Interactions API) und `file_mime()` (MIME-Typ einer hochgeladenen Gemini-Datei) |
 | `src/aibui/history.py` | `runtime()` (prozessweit: `lock`, die Sperre für den Verlauf), `load_jobs()`, `mutate_jobs(lock, change)` |
 | `src/aibui/rows.py` | die gemeinsame Zeilenform: `pick()`, `parse_line()`, `parse_results()` (mit wählbarem Zeilenleser), für den Hintergrund-Modus `as_dict()` und `parse_interaction()` |
 | `src/aibui/drive.py` | `drive_service()` (OAuth, Neuanmeldung bei `RefreshError`), `drive_id()` (ID aus Link), `drive_fetch()` (PDF laden/exportieren) |
-| `src/aibui/gemini.py` | `upload_pdf()` (Files API + `data/pdf_files.json`), `start_batch()` (JSONL bauen, hochladen, `batches.create`) |
-| `src/aibui/background.py` | Hintergrund-Modus (Interactions API, Long Decode): `interaction_request()` (Anfrage), `create_interaction()` (mit Wiederholung), `start_background()` (alle Prompts starten, Eintrag speichern), `fetch_background()` (Stand, Zeilen, Endzustand), `cancel_background()` |
-| `src/aibui/openai_batch.py` | `openai_client()` (lädt das Paket erst hier), `upload_pdf_openai()` (Files API + `data/openai_files.json`), `openai_request()` (Anfragerumpf), `start_openai_batch()` (JSONL bauen, hochladen, `batches.create`), `openai_error_text()`, `parse_openai_line()`, `fetch_openai_batch()` (Status, Ausgabe- und Fehlerdatei) |
+| `src/aibui/gemini.py` | `upload_file()` (Files API + `data/pdf_files.json`), `batch_part()` (Dateiteil einer Anfrage), `start_batch()` (JSONL bauen, hochladen, `batches.create`) |
+| `src/aibui/background.py` | Hintergrund-Modus (Interactions API, Long Decode): `input_part()` (Eingabeteil je Datei), `interaction_request()` (Anfrage), `create_interaction()` (mit Wiederholung), `start_background()` (alle Prompts starten, Eintrag speichern), `fetch_background()` (Stand, Zeilen, Endzustand), `cancel_background()` |
+| `src/aibui/openai_batch.py` | `openai_client()` (lädt das Paket erst hier), `upload_file_openai()` (Files API + `data/openai_files.json`), `openai_file_part()` (Dateiteil einer Anfrage), `openai_request()` (Anfragerumpf), `start_openai_batch()` (JSONL bauen, hochladen, `batches.create`), `openai_error_text()`, `parse_openai_line()`, `fetch_openai_batch()` (Status, Ausgabe- und Fehlerdatei) |
 | `src/aibui/providers.py` | `make_client()`, `entry_provider()`, `entry_mode()` (`background` oder `batch`, `sync` nur für ältere Einträge), `refresh()` (Status + Ergebnisse laden, Endergebnis sichern, bei OpenAI-Einträgen über `fetch_openai_batch()`, bei Hintergrund-Einträgen über `fetch_background()`), `batch_info()`, `cancel_batch()` (je Anbieter und Modus) |
 | `src/aibui/talk.py` | Gesprächsverlauf als Text: `entry_group()` (Prompts pro Gespräch, über 1 nur bei älteren synchronen Einträgen), `talk_safe()`, `conversation_text()`, `parse_conversation()`, `history_turns()`, `short_prompt()` |
 | `src/aibui/naming.py` | Namen der Einträge (ohne Streamlit): `default_label()` (Standardname), `naming_source()` (Text für das Modell), `clean_name()`, `generate_name()` (ein Aufruf von `generate_content`), `choose_label()` (welcher Name beim Start gilt, ein Fehler stoppt den Start nie), Suche mit `entry_text()`, `matches()` und `search_jobs()`, `file_stem()` (Dateiname des Markdown-Downloads) |
@@ -583,7 +618,7 @@ Die Grenze zwischen Logik und Oberfläche ist die Paketgrenze: Das Hauptskript i
 
 ```text
 Formular ──► Dateien sammeln (Upload, Drive) ──► Duplikate per SHA-256 entfernen
-         ──► upload_pdf() je PDF: Files API (wiederverwendet über data/pdf_files.json)
+         ──► upload_file() je Datei: Files API (MIME-Typ nach Endung, wiederverwendet über data/pdf_files.json)
          ──► start_batch(): JSONL (key + request je Prompt) in data/requests_<ts>.jsonl,
              JSONL per Files API hochladen (mime_type "jsonl"), client.batches.create(model, src)
          ──► Verlaufseintrag (provider Gemini, ohne state) in data/batch_jobs.json
@@ -596,7 +631,7 @@ Jobs-Tab ──► Fragment alle 10 s: refresh() → client.batches.get(name)
 
 ```text
 Formular ──► Dateien sammeln (Upload, Drive) ──► Duplikate per SHA-256 entfernen
-         ──► upload_pdf_openai() je PDF: Files API (Zweck user_data, Ablauf nach 3 Tagen,
+         ──► upload_file_openai() je Datei: Files API (Zweck user_data, bei Bildern vision, Ablauf nach 3 Tagen,
              wiederverwendet über data/openai_files.json)
          ──► start_openai_batch(): JSONL (custom_id + Anfrage je Prompt) in data/requests_openai_<ts>.jsonl,
              JSONL per Files API hochladen (Zweck batch), client.batches.create(input_file_id, endpoint, completion_window)
@@ -610,8 +645,8 @@ Jobs-Tab ──► Fragment alle 10 s: refresh() → fetch_openai_batch() → cl
 ### Datenfluss Hintergrund
 
 ```text
-Formular ──► Dateien sammeln, upload_pdf() je PDF (wie beim Batch)
-         ──► start_background(): je Prompt client.interactions.create(model, input=[PDFs als document + uri, Prompt],
+Formular ──► Dateien sammeln, upload_file() je Datei (wie beim Batch)
+         ──► start_background(): je Prompt client.interactions.create(model, input=[Dateien als document, image, audio oder video + uri, Prompt],
              generation_config={max_output_tokens, thinking_level}, background=True, store=True)
              → Interaktions-ID. Scheitert einer, werden die schon gestarteten abgebrochen.
          ──► Verlaufseintrag (provider Gemini, mode background, interactions {Schlüssel: ID}, ohne state) in data/batch_jobs.json
@@ -677,7 +712,7 @@ Jobs-Tab ──► Popover „Name und Beschreibung“: save_details() bzw. gene
 ### 9.1 Spielregeln
 
 1. **Erst diese Datei lesen**, dann das Hauptskript `src/ai_batch_ui.py` und das Modul in `src/aibui/`, das zum Thema passt (Landkarte in Abschnitt 8). Kleine, gezielte Änderungen statt Umbauten. Logik gehört in ein Modul von `aibui`, das Hauptskript bleibt die Oberfläche. Ein neues Thema bekommt ein neues Modul, eingetragen in der Landkarte und in der Liste in `src/aibui/__init__.py`. Ein Modul importiert nur Module, die in dieser Liste über ihm stehen. Wächst eine Datei deutlich über etwa 1.000 Zeilen, wird sie nach Thema geteilt (Importe werden gecacht, nur das Hauptskript läuft bei jedem Rerun neu).
-2. **Prefix stabil halten** (Abschnitt 5). Alles, was vor oder zwischen den PDFs steht, beeinflusst die Cache-Trefferquote.
+2. **Prefix stabil halten** (Abschnitt 5). Alles, was vor oder zwischen den Dateien steht, beeinflusst die Cache-Trefferquote.
 3. **Verlauf nur über `mutate_jobs`** schreiben, nie `data/batch_jobs.json` direkt. Lesen mit `load_jobs()`. Neue Eintragsfelder optional (`.get()`), weil alte Einträge sie nicht haben. Ausnahme ist `provider`: Jeder neue Eintrag bekommt es (Abschnitt 7).
 4. **Zeilenform nur in `parse_line()`, `parse_openai_line()` und `parse_interaction()` ändern** und dort neue Felder ergänzen (alle drei liefern dieselbe Form). Anzeige in `show_rows()`. Alle Modi und Anbieter nutzen dieselbe Zeilenform, und gespeicherte Zeilen alter Läufe haben neue Felder nicht (`.get()`).
 5. **Lange Arbeit nicht im Hauptskript abwarten.** Alles im Hauptskript kann durch einen Tab-Wechsel unterbrochen werden. Der Start-Handler legt die Arbeit beim Anbieter nur an (Batch oder Hintergrund-Interaktion) und speichert einen Verlaufseintrag, das Polling-Fragment fragt den Stand ab (Muster: `start_background` → `fetch_background` → `job_panel`).
@@ -716,7 +751,9 @@ Jobs-Tab ──► Popover „Name und Beschreibung“: save_details() bzw. gene
 
 **Neues Ergebnisfeld anzeigen**: Feld in `parse_line()` berechnen, in `show_rows()` ausgeben (mit `.get()`), bei Bedarf in den Markdown-Download aufnehmen.
 
-**Explizites Caching für andere Modelle**: Für Carbon und Argon nicht möglich. Für Modelle, die es unterstützen, wäre der Weg: Cache mit den PDFs anlegen (`client.caches.create(...)` mit Laufzeit), im Request nur noch `cached_content` referenzieren und die PDFs weglassen, Speicherkosten und Mindestgrößen beachten. Als Umschalter nur anzeigen, wenn das Modell es kann. Garantiert die Ersparnis, kostet aber Speicherzeit.
+**Einen weiteren Dateityp zulassen**: In `src/aibui/files.py` die Endung samt Art und MIME-Typ in `FILE_TYPES` eintragen (Textdateien nur in `TEXT_EXTENSIONS`). Mehr ist nicht nötig: Upload, Anfrageteile, Prüfung und Hilfetext lesen die Tabelle. `tests/test_files.py` prüft, dass jede Zeile zu ihrer Art passt und dass die MIME-Typen in den Aufzählungen des SDK der Interactions API stehen. Eine ganz neue Art (neben Dokument, Bild, Audio, Video) braucht außerdem einen Eintrag in `KIND_LABELS` und `PROVIDER_KINDS` und einen Teil in `batch_part()`, `input_part()` und `openai_file_part()`.
+
+**Explizites Caching für andere Modelle**: Für Carbon und Argon nicht möglich. Für Modelle, die es unterstützen, wäre der Weg: Cache mit den Dateien anlegen (`client.caches.create(...)` mit Laufzeit), im Request nur noch `cached_content` referenzieren und die Dateien weglassen, Speicherkosten und Mindestgrößen beachten. Als Umschalter nur anzeigen, wenn das Modell es kann. Garantiert die Ersparnis, kostet aber Speicherzeit.
 
 **Weitere Ideen** stehen in Abschnitt 11.
 
@@ -741,11 +778,12 @@ pytest tests/test_background.py -k cancel  # einzelne Datei oder Namensausschnit
 | `tests/conftest.py` | Fixtures: `home` (Wegwerf-Ordner als `AI_BATCH_UI_HOME`, Dummy-Keys für beide Anbieter), `fresh_package` (importiert die Module von `aibui` in jedem Test neu, weil sie ihre Ordner beim Import aus `AI_BATCH_UI_HOME` berechnen), `app` (alle Module von `aibui` als ein Objekt), `rt` (Ersatz für `runtime()`), `fake_time` (keine echten Pausen, in allen Modulen). Dazu eine Sperre gegen echte API-Zugriffe und ein Sicherheitsnetz: ändert ein Test `conf/` oder `data/` im Projektordner, schlägt der Lauf am Ende fehl |
 | `tests/fakes.py` | `FakeGemini` (Files API, Batch-API, Interactions API mit `create`, `get` und `cancel`, `models.generate_content` für die Namen, zeichnet Aufrufe auf), `make_interaction` (echte SDK-Interaktion), `make_name_response` (echte SDK-Antwort von `generate_content`), `ApiError`, `InteractionsError`, `FakeDrive`, `install`, `install_drive`. Für OpenAI: `FakeOpenAI` (Files API und Batch API, liefert echte SDK-Objekte `Batch` und `FileObject`), `make_openai_body` (Antwortrumpf wie in der Ausgabedatei), `OpenAIError`, `install_openai` |
 | `tests/helpers.py` | Verlauf lesen und schreiben, Eintrags-Vorlagen (`batch_entry`, `sync_entry`, `background_entry`, `finished_batch`, `finished_background`, `openai_entry`, `finished_openai_batch`, `row`), AppTest-Kürzel (`new_app`, `new_openai_app`, `click`, `set_prompts`, `captions`, `markdown`, `sent_to_browser`) |
-| `tests/test_logic.py` | reine Logik: Parser, Hilfsfunktionen, Ordner (Dateien im Projektordner bleiben liegen), Verlaufsdatei, PDF-Upload, Batch-Anfragen, Gesprächsverlauf als Text (Aufbau, Wiedereinlesen, mehrfaches Fortsetzen) |
-| `tests/test_background.py` | Hintergrund-Modus: Anfrageaufbau (auch gegen das Schema des SDK), Start mit Wiederholung und Aufräumen bei Fehlern, Abfrage (laufend, beendet, `incomplete`, `failed`, `cancelled`, Long-Decode-Schritte), Abbruch, Zeilenparser, Oberfläche (Formular, Start, Jobs-Tab, Übernehmen, Hinweis bei abgeschnittenem Batch; Oberflächentests mit Marker `ui`) |
+| `tests/test_logic.py` | reine Logik: Parser, Hilfsfunktionen, Ordner (Dateien im Projektordner bleiben liegen), Verlaufsdatei, Datei-Upload, Batch-Anfragen, Gesprächsverlauf als Text (Aufbau, Wiedereinlesen, mehrfaches Fortsetzen) |
+| `tests/test_background.py` | Hintergrund-Modus: Anfrageaufbau (auch gegen das Schema des SDK, mit Dateien aller Arten), Start mit Wiederholung und Aufräumen bei Fehlern, Abfrage (laufend, beendet, `incomplete`, `failed`, `cancelled`, Long-Decode-Schritte), Abbruch, Zeilenparser, Oberfläche (Formular, Start, Jobs-Tab, Übernehmen, Hinweis bei abgeschnittenem Batch; Oberflächentests mit Marker `ui`) |
 | `tests/test_drive.py` | Drive-Anmeldung (Token, Neuanmeldung, Netzwerkfehler) und Laden von Dateien |
-| `tests/test_ui.py` | Oberfläche mit AppTest: Formular, Starts, Jobs-Tab, automatische Prüfung, Übernehmen, Löschen, Altbestand (ältere Einträge, auch synchrone, öffnen sich: Der Start ändert den Verlauf nicht und verschiebt keine Dateien), Ordnerlage, Prompt-Anzeige, Gespräch fortsetzen (Marker `ui`) |
-| `tests/test_openai.py` | OpenAI-Anbindung: Anfrageaufbau, PDF-Upload, Ergebniszeilen, Status und Ergebnisdateien, Anbieter-Schalter, Formularwerte beim Anbieterwechsel (was die App dem Browser schickt), Start, Jobs-Tab, Übernehmen, Fortsetzen. Ein Test prüft, dass die Beispielantworten des Fakes gültige Objekte des SDK sind (Oberflächentests mit Marker `ui`) |
+| `tests/test_files.py` | erlaubte Dateitypen (Issue #16): Art und MIME-Typ je Endung (auch gegen die Aufzählungen im SDK), Prüfung je Anbieter, Hilfetext. Die Oberfläche dazu prüfen `test_ui.py` und `test_openai.py` |
+| `tests/test_ui.py` | Oberfläche mit AppTest: Formular, Starts (auch mit Dokumenten, Bildern, Text und Audio), Sperre bei Dateitypen, die die App nicht kennt, Jobs-Tab, automatische Prüfung, Übernehmen, Löschen, Altbestand (ältere Einträge, auch synchrone, öffnen sich: Der Start ändert den Verlauf nicht und verschiebt keine Dateien), Ordnerlage, Prompt-Anzeige, Gespräch fortsetzen (Marker `ui`) |
+| `tests/test_openai.py` | OpenAI-Anbindung: Anfrageaufbau, Datei-Upload (Dokumente, Text, Bilder), Ergebniszeilen, Status und Ergebnisdateien, Anbieter-Schalter, Formularwerte beim Anbieterwechsel (was die App dem Browser schickt), Start, Jobs-Tab, Übernehmen, Fortsetzen. Ein Test prüft, dass die Beispielantworten des Fakes gültige Objekte des SDK sind (Oberflächentests mit Marker `ui`) |
 | `tests/test_naming.py` | Namen und Suche: Text für das Modell, Bereinigung der Antwort, Aufruf von `generate_content` (Modell, Denktiefe, Zeitlimit), Standardname je Anbieter bzw. Modus (`gemini-…`, `background-gemini-…`, `openai-…`) und Fallback darauf bei Fehlern und ohne Key, Suche, Dateiname; Oberfläche: Start in allen Modi und auch bei OpenAI, Einstellungen der Seitenleiste, Suche im Jobs-Tab, Name und Beschreibung ändern, Name aus dem Prompt erzeugen (Oberflächentests mit Marker `ui`) |
 | `tests/test_modules.py` | Aufbau des Pakets `aibui`: jedes Modul lässt sich einzeln importieren (keine Importzyklen), keines importiert das Hauptskript, auf Modulebene steht kein Streamlit-Aufruf |
 | `tests/test_docs.py` | gleicht README und Code ab: genannte Funktionen, Konstanten, Schlüssel, Versionen, Testdateien, Module von `aibui` |
@@ -833,10 +871,10 @@ Die Datei `.github/workflows/tests.yml` führt die Testsuite auf GitHub aus, ohn
 | Hintergrund: „Abruf fehlgeschlagen … 403“ | Zugriff verweigert, vermutlich gehört der API-Key zu einem anderen Projekt als der, mit dem der Lauf gestartet wurde (ungeprüft) | Den Key des Startprojekts eintragen (Seitenleiste). |
 | Hintergrund: Ergebnis „Die Interaktion gibt es bei Google nicht mehr“ | Google antwortet mit 404: Die Aufbewahrung ist abgelaufen oder die Interaktion wurde gelöscht, und das Ergebnis wurde lokal nie gesichert, weil noch nicht alle Prompts beendet waren | Nichts zu retten. Mit „Eingaben übernehmen“ neu starten. Beendete Läufe sichert die App lokal, sobald alle Prompts fertig sind. |
 | Hintergrund: Status `incomplete` oder Warnung `MAX_TOKENS` | Denk- plus Ausgabe-Token haben das Limit erreicht | Limit erhöhen (bis 1.048.576 minus Eingabe) oder Denktiefe senken. |
-| Hintergrund: „Eingabe“ viel größer als das PDF | Bei Long Decode zählt `total_input_tokens` die Eingabe jedes 64K-Schritts erneut mit | Normal, der größte Teil davon ist Cache (95 % günstiger). Kontextgröße = PDF plus Denk- plus Ausgabe-Token. |
+| Hintergrund: „Eingabe“ viel größer als die Dateien | Bei Long Decode zählt `total_input_tokens` die Eingabe jedes 64K-Schritts erneut mit | Normal, der größte Teil davon ist Cache (95 % günstiger). Kontextgröße = Token der Dateien plus Denk- plus Ausgabe-Token. |
 | `OSError: inotify watch limit reached` im Terminal | Linux-Limit für Dateibeobachtung erschöpft (oft durch IDE oder Sync-Programm). Die App läuft trotzdem, nur das automatische Neuladen bei Codeänderung fehlt | `--server.fileWatcherType none` oder in `.streamlit/config.toml` setzen, oder `fs.inotify.max_user_watches` erhöhen. |
 | pip-Fehler zu `tensorboard`/`tensorflow` nach Installation | `google-auth-oauthlib` oder `numpy`/`protobuf` wurden hochgezogen, bestehende Pakete verlangen ältere Versionen | Eigene Umgebung benutzen (siehe 3), oder `pip install "google-auth-oauthlib<1.1"`. Kein `-U` in gemeinsamen Umgebungen. |
-| Cache-Token überall 0 | implizites Caching ist nicht garantiert. Im Batch zusätzlich undokumentiert. Im Modus „Hintergrund“ starten alle Prompts gleichzeitig, keine erste Anfrage füllt den Cache vorher | `usage`-JSON einer Antwort ansehen. PDFs, Reihenfolge und Systemanweisung unverändert lassen. |
+| Cache-Token überall 0 | implizites Caching ist nicht garantiert. Im Batch zusätzlich undokumentiert. Im Modus „Hintergrund“ starten alle Prompts gleichzeitig, keine erste Anfrage füllt den Cache vorher | `usage`-JSON einer Antwort ansehen. Dateien, Reihenfolge und Systemanweisung unverändert lassen. |
 | Drive: „Zugriff blockiert“ | Konto nicht als Test user eingetragen | Cloud Console → Audience → Test users (6.4, Schritt 4) |
 | Drive: `credentials.json fehlt. Lege sie nach …/conf` | OAuth-Client nicht in `conf/` abgelegt | 6.4, Schritt 6 |
 | Drive fragt nach einer Woche erneut nach Anmeldung | „Testing“-Status, Freigabe läuft nach 7 Tagen ab | erwartetes Verhalten, die App meldet sich selbst neu an. Dauerhaft: „Publish app“ oder Workspace „Internal“. |
@@ -848,7 +886,9 @@ Die Datei `.github/workflows/tests.yml` führt die Testsuite auf GitHub aus, ohn
 | OpenAI-Eintrag: „Der OpenAI API-Key fehlt (Seitenleiste)“ | Das Keyfeld dieses Anbieters ist leer, während ein Eintrag von ihm geöffnet ist | Key eintragen. Gesicherte Ergebnisse sind auch ohne Key sichtbar. |
 | „Das Paket openai fehlt“ beim Wechsel auf OpenAI | Nach dem Update wurde `pip install -r requirements.txt` nicht ausgeführt | Nachholen. Gemini läuft auch ohne das Paket. |
 | OpenAI: Fehler je Prompt zu `reasoning.effort` | Das Modell kennt die gewählte Denktiefe nicht (z. B. `none` bei `gpt-6-astra`) | Andere Stufe oder „Standard“ wählen und neu starten (Eingaben übernehmen). |
-| OpenAI-Batch endet mit `failed`, die Meldung nennt ein Token-Limit | Die Summe der Token aller eingereihten Batches überschreitet das Warteschlangenlimit des Modells | Weniger Prompts oder kürzere PDFs je Batch, warten bis andere Batches fertig sind, Limits der Kontostufe bei OpenAI prüfen. |
+| OpenAI-Batch endet mit `failed`, die Meldung nennt ein Token-Limit | Die Summe der Token aller eingereihten Batches überschreitet das Warteschlangenlimit des Modells | Weniger Prompts oder kürzere Dateien je Batch, warten bis andere Batches fertig sind, Limits der Kontostufe bei OpenAI prüfen. |
+| Fehler unter dem Datei-Feld („Der Dateityp … wird nicht unterstützt“ oder „… nimmt OpenAI nicht an, nur Gemini“), der Start ist gesperrt | Die Endung steht nicht in `FILE_TYPES`, oder der gewählte Anbieter nimmt die Art der Datei nicht an (Audio und Video nur bei Gemini) | Die Datei entfernen oder in einen erlaubten Typ umwandeln (Abschnitt 4, „Dateien und erlaubte Typen“). Soll ein weiterer Typ gehen: Abschnitt 9.2. |
+| Der Start geht durch, aber ein Lauf oder einzelne Antworten scheitern mit einem Fehler zu einer Datei | Die App prüft nur die Endung. Ob das Modell den Typ annimmt, hängt vom Modell ab (laut Modellseite kennt Gemini 4 Carbon Office-Dateien, andere Modelle womöglich nur PDF und Text) | Die Datei als PDF exportieren oder ein anderes Modell wählen. Der Fehlertext der API steht im Eintrag. |
 | OpenAI-Batch `expired`, einzelne Prompts mit Fehler | Das Zeitfenster von 24 Stunden reichte nicht für alle Anfragen. Die fertigen Antworten sind geladen | Die fehlenden Prompts mit „Eingaben übernehmen“ erneut starten. |
 | `data/batch_jobs.defekt-<zahl>.json` taucht auf | `data/batch_jobs.json` war beschädigt, die App hat sie gesichert und neu begonnen | Sicherung prüfen, ggf. Einträge von Hand zurückkopieren. |
 | Verlauf leer nach dem Wechsel auf `conf/` und `data/` oder nach der Umbenennung (Issue #18) | `batch_jobs.json` liegt noch im Projektordner statt in `data/` (die App verschiebt seit Issue #34 nichts mehr), oder `AI_BATCH_UI_HOME` zeigt woanders hin bzw. ist nicht gesetzt (bis Issue #18 hieß die Variable `GEMINI_UI_HOME`, der alte Name gilt nicht mehr) | Datei von Hand nach `data/` verschieben bzw. `AI_BATCH_UI_HOME` prüfen. |
@@ -863,23 +903,24 @@ Die Datei `.github/workflows/tests.yml` führt die Testsuite auf GitHub aus, ohn
 - Die gültigen Denktiefen sind bei OpenAI nicht je Modell hinterlegt, weil sie sich schnell ändern: Die Auswahl zeigt alle Stufen, unpassende lehnt die API je Prompt ab.
 - OpenAI bekommt PDFs mit Text und Seitenbildern, die Detailstufe (`detail`) ist nicht einstellbar. Die Eingabe-Token können sich deshalb von denen bei Gemini unterscheiden.
 - Implizites Caching ist nicht garantiert und bei Carbon (wie bei Argon) die einzige Cache-Art. Im Batch gibt es dazu keine Doku, und im Modus „Hintergrund“ starten alle Prompts gleichzeitig, was Treffer eher verhindert.
-- Der Modus „Hintergrund“ startet alle Prompts **gleichzeitig** (mögliche Ratenbegrenzungen bei vielen Prompts, ein Cache-Treffer fürs PDF ist weniger wahrscheinlich), kennt keine Gespräche (je Prompt eine Interaktion, eine Fortsetzung steckt im Prompt), hat keinen Batch-Rabatt und zeigt keine Zwischenstände oder Denk-Zusammenfassungen. Eine Interaktion läuft laut Google höchstens 24 Stunden, danach gilt sie als `failed`. Long Decode im **Batch** gibt es nicht, solange die Interactions API keinen Batch kennt.
+- Der Modus „Hintergrund“ startet alle Prompts **gleichzeitig** (mögliche Ratenbegrenzungen bei vielen Prompts, ein Cache-Treffer für die Dateien ist weniger wahrscheinlich), kennt keine Gespräche (je Prompt eine Interaktion, eine Fortsetzung steckt im Prompt), hat keinen Batch-Rabatt und zeigt keine Zwischenstände oder Denk-Zusammenfassungen. Eine Interaktion läuft laut Google höchstens 24 Stunden, danach gilt sie als `failed`. Long Decode im **Batch** gibt es nicht, solange die Interactions API keinen Batch kennt.
 - Der Start (Dateien laden, hochladen) läuft im Hauptskript. Ein Tab-Wechsel währenddessen bricht ihn ab (im Statusfeld vermerkt).
 - Die Sperre in `runtime()` gilt nur innerhalb **eines** Streamlit-Prozesses. Nicht zwei Instanzen im selben Ordner starten.
 - Der Verlauf wächst ohne Seitenaufteilung. Löschen geht nur einzeln. `data/requests_*.jsonl` sammeln sich an.
 - Keine Kostenanzeige (Preise ändern sich), keine Streaming-Anzeige, keine Prompt-Bibliothek, kein Zählen der Token vor dem Start.
 - Texte der Oberfläche sind fest auf Deutsch im Code.
-- Drive: nur PDFs und Google-Dokumente (Export als PDF). Liste zeigt höchstens 50 Dateien, weitere per Link oder ID.
-- „Gespräch fortsetzen“ schickt den Verlauf als Text in **einer** Nutzernachricht. Es ist kein echter Mehr-Runden-Verlauf mit Modellrolle, und gespeichert sind nur die sichtbaren Antworten (ohne Denkteile). Lange Verläufe kosten bei jeder Anfrage Eingabe-Token, und die PDFs müssen neu angehängt werden.
+- Drive: nur PDFs und Google-Dokumente (Export als PDF), andere Dateitypen aus Drive (Bilder, Office-Dateien) gibt es noch nicht. Liste zeigt höchstens 50 Dateien, weitere per Link oder ID.
+- **Dateien** (Issue #16): Die App prüft nur die Endung, nicht den Inhalt und nicht die Größe (OpenAI: unter 50 MB je Datei, zusammen höchstens 50 MB je Anfrage). Ob ein Modell einen Typ annimmt, hängt vom Modell ab. Bei OpenAI gehen Bilder und Diagramme aus Office-Dateien verloren, Tabellen werden auf die ersten 1.000 Zeilen je Blatt gekürzt, und Audio und Video gibt es nur bei Gemini. Textdateien meldet die App Gemini als `text/plain`, auch Markdown, JSON und Quelltext.
+- „Gespräch fortsetzen“ schickt den Verlauf als Text in **einer** Nutzernachricht. Es ist kein echter Mehr-Runden-Verlauf mit Modellrolle, und gespeichert sind nur die sichtbaren Antworten (ohne Denkteile). Lange Verläufe kosten bei jeder Anfrage Eingabe-Token, und die Dateien müssen neu angehängt werden.
 - Die **Namen** der Einträge entstehen immer mit Gemini (Gemini API-Key nötig), auch bei OpenAI-Läufen, ein OpenAI-Modell für die Namen gibt es nicht. Sie sind Vorschläge eines kleinen Modells und können danebenliegen, jeder Name lässt sich ändern. Der Anbieter erfährt von späteren Änderungen nichts: Der Anzeigename des Batches bleibt der vom Start.
-- Die **Suche** ist eine einfache Textsuche über Name, Beschreibung, ID, PDF-Namen und Prompts (jedes Wort muss vorkommen, ohne Unschärfe). In den Antworten sucht sie nicht.
+- Die **Suche** ist eine einfache Textsuche über Name, Beschreibung, ID, Dateinamen und Prompts (jedes Wort muss vorkommen, ohne Unschärfe). In den Antworten sucht sie nicht.
 
 **Ideen** (grob nach Nutzen)
 
 - Prompt-Vorlagen mit Platzhaltern und einer Werteliste (ein Prompt pro Wert), z. B. „Kapitel {k}, Abschnitt {a}“.
 - Einzel-Download je Antwort als `.txt` (z. B. zum Vorlesen) und alle Ergebnisse als ZIP.
 - Optionale Kostenschätzung mit **einstellbaren** Preisen (nicht fest verdrahten), Vergleich Batch gegen Hintergrund-Modus.
-- Token zählen vor dem Start (`count_tokens`), um die PDF-Größe und die 4.096-Token-Schwelle zu sehen.
+- Token zählen vor dem Start (`count_tokens`), um die Größe der Dateien und die 4.096-Token-Schwelle zu sehen.
 - Eingaben des Formulars beim Neustart wiederherstellen.
 - Fortsetzung als echter Mehr-Runden-Verlauf (`user`/`model`-Nachrichten statt Text im Prompt). Dazu müsste der Eintrag die Modellantworten samt Denk-Signaturen speichern.
 - Long Decode im Batch, sobald Google die Interactions API für die Batch API öffnet (laut Doku „noch nicht verfügbar“), und die clientseitige Fortsetzung der Interactions API (laut Doku „bald“) als Alternative ohne Speicherung auf dem Server.
@@ -887,15 +928,16 @@ Die Datei `.github/workflows/tests.yml` führt die Testsuite auf GitHub aus, ohn
 - Tarif/Modus „Flex“ oder andere Preisstufen, falls Google sie für Carbon anbietet (Doku prüfen).
 - Explizites Caching als Umschalter für Modelle, die es unterstützen.
 - Aufräumen alter `data/requests_*.jsonl` (und `data/requests_openai_*.jsonl`).
-- OpenAI: Detailstufe der PDF-Seitenbilder (`detail`) wählbar machen, Modellvorschläge aus der Modellliste der API statt Freitext.
+- Dateien: Größen vor dem Upload prüfen (OpenAI: 50 MB), Bilder und Office-Dateien auch aus Drive laden.
+- OpenAI: Detailstufe der PDF-Seitenbilder und der Bilder (`detail`) wählbar machen, Modellvorschläge aus der Modellliste der API statt Freitext.
 - Dependabot für die Versionen der Actions (`.github/dependabot.yml`).
 - Wenige, bewusst kostenpflichtige „Live“-Tests gegen die echte API (eigener Marker, standardmäßig übersprungen), die Annahmen aus Abschnitt 5 prüfen.
 - Namen: ein Sammelknopf, der alle Einträge mit Standardnamen auf einmal benennt, ein OpenAI-Modell als Alternative zu Gemini (damit bei OpenAI-Läufen nichts an Google geht) und eine Suche auch in den Antworten.
 
 ## 12. Sicherheit und Datenschutz
 
-- **Daten verlassen den Rechner**: PDFs, Prompts und Ergebnisse gehen an den gewählten Anbieter: Google (Gemini Files API, Batch-API, Modell) oder OpenAI (Files API, Batch API, Modell). Bei Google liegen hochgeladene Dateien zeitlich begrenzt (derzeit 48 Stunden), Batch-Ergebnisse 6 Wochen. Bei OpenAI setzt die App für PDFs einen Ablauf von 3 Tagen (`OPENAI_FILE_TTL`), die Batch-Datei folgt dem Standard von OpenAI (30 Tage). Die Ausgabe- und Fehlerdateien der Batches löscht die App nicht, sie unterliegen den Aufbewahrungsregeln der OpenAI-Plattform. Das gilt für Inhalte, die diese Weitergabe erlauben.
-- **Namensvergabe**: Ist das Feld „Name“ leer und die Namensvergabe an (Voreinstellung), geht ein Auszug der Prompts (die ersten drei, zusammen höchstens `NAME_SOURCE_CHARS` Zeichen, nie die PDFs oder die Systemanweisung) an das Gemini-Modell für die Namen (Voreinstellung `gemini-3.5-flash-lite`), **auch bei einem OpenAI-Lauf**, sobald ein Gemini API-Key da ist. Das Formular weist bei OpenAI darauf hin. Wer Prompts nicht an Google geben will, schaltet „Name aus dem Prompt erzeugen“ in der Seitenleiste aus (oder lässt den Gemini API-Key weg) oder tippt den Namen selbst ein. Ob Google Eingaben zur Verbesserung seiner Produkte nutzen darf, hängt vom Tarif des Keys ab: Laut Preisseite von Google (Stand November 2026, bitte selbst prüfen) werden Eingaben und Antworten im kostenlosen Tarif der Gemini API dafür genutzt, im kostenpflichtigen nicht. Das gilt dann auch für diesen Auszug.
+- **Daten verlassen den Rechner**: Dateien, Prompts und Ergebnisse gehen an den gewählten Anbieter: Google (Gemini Files API, Batch-API, Modell) oder OpenAI (Files API, Batch API, Modell). Bei Google liegen hochgeladene Dateien zeitlich begrenzt (derzeit 48 Stunden), Batch-Ergebnisse 6 Wochen. Bei OpenAI setzt die App für Dateien einen Ablauf von 3 Tagen (`OPENAI_FILE_TTL`), die Batch-Datei folgt dem Standard von OpenAI (30 Tage). Die Ausgabe- und Fehlerdateien der Batches löscht die App nicht, sie unterliegen den Aufbewahrungsregeln der OpenAI-Plattform. Das gilt für Inhalte, die diese Weitergabe erlauben.
+- **Namensvergabe**: Ist das Feld „Name“ leer und die Namensvergabe an (Voreinstellung), geht ein Auszug der Prompts (die ersten drei, zusammen höchstens `NAME_SOURCE_CHARS` Zeichen, nie die Dateien oder die Systemanweisung) an das Gemini-Modell für die Namen (Voreinstellung `gemini-3.5-flash-lite`), **auch bei einem OpenAI-Lauf**, sobald ein Gemini API-Key da ist. Das Formular weist bei OpenAI darauf hin. Wer Prompts nicht an Google geben will, schaltet „Name aus dem Prompt erzeugen“ in der Seitenleiste aus (oder lässt den Gemini API-Key weg) oder tippt den Namen selbst ein. Ob Google Eingaben zur Verbesserung seiner Produkte nutzen darf, hängt vom Tarif des Keys ab: Laut Preisseite von Google (Stand November 2026, bitte selbst prüfen) werden Eingaben und Antworten im kostenlosen Tarif der Gemini API dafür genutzt, im kostenpflichtigen nicht. Das gilt dann auch für diesen Auszug.
 - **Drive**: nur Lesezugriff (`drive.readonly`). Die App kann nichts ändern oder löschen.
 - **Geheimnisse**: `conf/` (vor allem `credentials.json` und `token.json`) nicht weitergeben und nicht einchecken. Die API-Keys stehen nur in den Browserfeldern oder in den Umgebungsvariablen.
 - **Lokale Daten**: `data/` (z. B. `batch_jobs.json`, `requests_*.jsonl`) enthält Prompts und Antworten im Klartext. Ordner entsprechend schützen (`.gitignore`, Dateirechte).
@@ -916,6 +958,7 @@ Die Datei `.github/workflows/tests.yml` führt die Testsuite auf GitHub aus, ohn
 - **Nur mit simulierten Diensten getestet**, nicht gegen echte Dienste: mehrere PDFs, Drive-Anbindung samt Neuanmeldung, lokale Sicherung der Batch-Ergebnisse, „Eingaben übernehmen“, „Gespräch fortsetzen“ (wie das Modell auf einen Prompt mit eingefügtem Verlauf antwortet), Löschen, Fehlerzähler der automatischen Prüfung. Die Ordnerstruktur (`src/`, `conf/`, `data/`) samt Übernahme alter Dateien lief nur in Wegwerf-Ordnern, noch nicht im echten Projektordner.
 - **OpenAI-Anbindung: nur mit simulierten Diensten getestet**, nicht gegen die echte OpenAI-API (in der Entwicklungsumgebung gab es weder Key noch Zugriff). `FakeOpenAI` liefert echte SDK-Objekte (`Batch`, `FileObject`), und ein Test stellt sicher, dass die Beispielantworten gültige `Response`-Objekte des SDK sind (openai 3.51.0). Feldnamen, Endpunkt, Parameter und die erlaubten Denktiefen stammen aus der OpenAI-Dokumentation und dem SDK. Ungeprüft, bitte beim ersten echten Einsatz beobachten: ob ein Batch am Endpunkt `/v1/responses` PDFs per `file_id` (`input_file`) annimmt (die gelesenen Dokumentationsstellen schließen es nicht aus, bestätigen es für Batches aber auch nicht), welche Denktiefen das gewählte Modell kennt, ob Cache-Treffer im Batch vorkommen, die Fehlercodes der Fehlerdatei (die Beispiele in den Tests sind nicht aus echten Läufen) und die Meldung bei überschrittenem Warteschlangenlimit.
 - **Hintergrund-Modus (Issue #19): nur anhand der Google-Dokumentation (Long Decode, Background Execution, Interactions API, Developer Guide zu Carbon, Stand 13.11.2026) und mit den simulierten Diensten der Testsuite geprüft**, nicht gegen die echte API (in der Entwicklungsumgebung gab es keinen API-Key). `FakeGemini` liefert echte SDK-Objekte (`google.genai.interactions.Interaction`), und ein Test stellt sicher, dass die gesendete Anfrage dem Schema des SDK entspricht (`CreateModelInteraction`). Ungeprüft, bitte beim ersten echten Einsatz beobachten: ob `gemini-4-carbon` die Interactions API mit `background=true` wie dokumentiert annimmt (der Developer Guide zu Carbon beschreibt `background=True`, die Doku zu Background Execution nennt in ihrer Modellliste, Stand 21.10.2026, nur Argon und Gemini 3.8 Flash), ob die Files-API-Referenz eines PDFs als `document` mit `uri` angenommen wird (so zeigt es die Doku zur Dokumentverarbeitung), ob die API ein `max_output_tokens` nahe 1.048.576 bei großer Eingabe ablehnt oder kürzt (Doku: „minus Eingabe“), ob mehrere gleichzeitige Läufe in Ratenbegrenzungen laufen und wie die Abrechnung der Schritte aussieht. Die App behandelt jeden Status außer `in_progress` und `queued` als Ende, damit eine unerwartete Statusangabe das Abfragen nicht endlos weiterlaufen lässt.
+- **Dateien statt nur PDFs (Issue #16): nur mit simulierten Diensten getestet**, nicht gegen die echten APIs (in der Entwicklungsumgebung gab es keinen API-Key). Die Typen und Wege stützen sich auf die Dokumentation (Stand 18.11.2026). Bei OpenAI auf die Seite „File inputs“ (ganz gelesen: Responses API, `input_file` mit Dokumenten, Text und Tabellen, Zweck `user_data`, unter 50 MB je Datei und zusammen höchstens 50 MB je Anfrage, außer bei PDFs nur der Text) und auf Auszüge der Seite zu Bildern (PNG, JPEG, WEBP und GIF ohne Animation, ein Bild per Datei-ID aus der Files API). Bei Google auf Auszüge der Modellseite zu Gemini 4 Carbon in der Cloud-Dokumentation (PDF, Text, Office- und OpenDocument-Dateien, Bilder, Audio, Video) und der Files-API-Anleitung der Interactions API (Dateien mit `uri` und `mime_type` der hochgeladenen Datei). Dazu kommen die Aufzählungen der MIME-Typen im SDK (google-genai 3.4.0): Ein Test gleicht `FILE_TYPES` damit ab, und ein weiterer stellt sicher, dass eine Anfrage mit allen vier Arten dem Schema `CreateModelInteraction` entspricht. `FakeGemini` und `FakeOpenAI` halten MIME-Typ und Zweck jedes Uploads fest. Ungeprüft, bitte beim ersten echten Einsatz beobachten: ob ein OpenAI-Batch am Endpunkt `/v1/responses` Bilder als `input_image` mit `file_id` annimmt (der Zweck `vision` stammt aus Beispielcode des OpenAI-.NET-SDKs zur Bilddokumentation, die gelesenen Auszüge der Seite nennen ihn nicht) und Office-Dateien als `input_file`. Ob Gemini Textdateien als `text/plain` und Office-Dateien als `document` annimmt, im Batch (`file_data`) wie in der Interactions API (deren SDK führt `text/plain` nicht unter den Dokumenttypen, lässt aber auch andere Werte zu), und ob das für andere Modelle als `gemini-4-carbon` gilt. Ob Audio und Video samt Verarbeitungszeit der Files API (Zustand PROCESSING) in beiden Modi klappen und wie sich Cache-Treffer bei Bildern, Audio und Video verhalten. Die Oberfläche (Datei-Feld ohne Typbeschränkung, Fehlermeldung, gesperrter Start, Dateien bleiben beim Anbieterwechsel im Feld) wurde nur mit `AppTest` geprüft, nicht in einem echten Browser.
 - Zur Frage in Issue #19, ob Carbon ohne Long Decode schon 65.536 statt 32.768 schafft: laut Google-Doku **ja, aber nur in der Interactions API** (Standardlimit 65.536, ohne `background=true` auch Obergrenze). Der Batch läuft über `generateContent` (nicht streamend 32.768 je Anfrage) und die Interactions API kennt laut Doku noch keinen Batch. Ob Carbon im Batch dennoch mehr als 32.768 annimmt, bleibt **ungeprüft** (Prüfweg in Abschnitt 5, Tabelle „Batch-Ausgabelimit“).
 - Ungeprüft, bisher nur mit Argon beobachtet oder dokumentiert: ob die Batch-Antworten für Carbon ein Cache-Feld unter anderem Namen führen (siehe `usage`-JSON) und ob der Batch bei Carbon dasselbe Ausgabelimit von 32.768 Token hat.
 
@@ -934,6 +977,8 @@ Die Datei `.github/workflows/tests.yml` führt die Testsuite auf GitHub aus, ohn
 - Long Decode mit `generateContent` (clientseitige Fortsetzung, 32K je nicht streamender Anfrage): <https://ai.google.dev/gemini-api/docs/generate-content/long-decode>
 - Gemini 4 Carbon: Developer Guide (65.536 Standardlimit der Interactions API, `background=True` bis 1M): <https://aistudio.google.com/learn/gemini-4-carbon-developer-guide>
 - Context Caching (implizit/explizit, Nutzungsfelder): <https://ai.google.dev/gemini-api/docs/caching>
+- Files API in der Interactions API (Dateien hochladen, `uri` und `mime_type`, Stand 18.11.2026): <https://ai.google.dev/gemini-api/docs/interactions/files>
+- Gemini 4 Carbon, Modellseite in der Google-Cloud-Dokumentation (unterstützte Eingabetypen, Stand 18.11.2026): <https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/4-carbon>
 - Drive-API-Quickstart für Python (OAuth-Einrichtung): <https://developers.google.com/workspace/drive/api/quickstart/python>
 - Streamlit-Dokumentation (`st.tabs`, `st.fragment`, `AppTest`): <https://docs.streamlit.io>
 
@@ -941,7 +986,8 @@ OpenAI (Stand 10.11.2026, bitte auf Änderungen prüfen):
 
 - Batch API (Format, Fenster, Limits, Statuswerte, Ergebnis- und Fehlerdatei): <https://developers.openai.com/api/docs/guides/batch>
 - Batch anlegen (Parameter): <https://developers.openai.com/api/docs/api-reference/batch/create>
-- Dateien als Eingabe (`input_file`, `user_data`, Größenlimits): <https://developers.openai.com/api/docs/guides/file-inputs>
+- Dateien als Eingabe (`input_file`, erlaubte Typen, `user_data`, Größenlimits, Stand 18.11.2026): <https://developers.openai.com/api/docs/guides/file-inputs>
+- Bilder als Eingabe (`input_image`, Formate, Datei-ID, Stand 18.11.2026): <https://developers.openai.com/api/docs/guides/images-vision>
 - PDF-Dateien (Text und Seitenbilder, `detail`): <https://developers.openai.com/api/docs/guides/pdf-files>
 - Prompt Caching (Prefix, `cached_tokens`, Cache-Schreiben): <https://developers.openai.com/api/docs/guides/prompt-caching>
 - Aktuelle Modelle und ihre Denktiefen: <https://developers.openai.com/api/docs/guides/latest-model> und Modellseite <https://developers.openai.com/api/docs/models/gpt-6-astra>

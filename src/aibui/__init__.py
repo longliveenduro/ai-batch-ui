@@ -3,12 +3,13 @@
 Ein Modul importiert nur Module, die in dieser Liste über ihm stehen. So bleibt die Reihenfolge ohne Zyklen:
 
     config         Konstanten, Ordner conf/ und data/
+    files          Dateien als Eingabe: erlaubte Typen mit MIME-Typ und Art, Prüfung je Anbieter
     history        Verlauf in data/batch_jobs.json (Sperre, Lesen, atomares Schreiben)
     rows           Ergebniszeilen: gemeinsame Zeilenform, Parser für Gemini
     drive          Google Drive
-    gemini         Gemini: PDF hochladen, Batch starten
+    gemini         Gemini: Dateien hochladen, Batch starten
     background     Gemini: Hintergrund-Modus (Interactions API, Long Decode), starten, abfragen, abbrechen
-    openai_batch   OpenAI: PDF hochladen, Batch starten, Ergebnisse lesen
+    openai_batch   OpenAI: Dateien hochladen, Batch starten, Ergebnisse lesen
     providers      Anbieter: Client, Betriebsart eines Eintrags, Status holen und sichern, abbrechen
     talk           Gesprächsverlauf als Text
     naming         Namen der Einträge: aus dem Prompt erzeugen, Standardname, Suche im Verlauf

@@ -45,7 +45,7 @@ def fill_form(j, raw, text):
         note += (" Den synchronen Modus gibt es nicht mehr: Die Eingaben stehen im Modus „Hintergrund“ bereit, "
                  "jeder Prompt läuft dort für sich.")
     if pdfs:
-        note += f" Bitte die PDFs erneut anhängen: {pdfs}. Schon hochgeladene Dateien werden wiederverwendet."
+        note += f" Bitte die Dateien erneut anhängen: {pdfs}. Schon hochgeladene Dateien werden wiederverwendet."
     ss["reused_note"] = note
     ss["view"] = TABS[0]  # wechselt zum Tab „Neue Anfrage“
 

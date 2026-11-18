@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime
 
 from .config import BG_RUNNING, PROVIDER_GEMINI
+from .files import file_mime, mime_kind
 from .history import mutate_jobs
 from .rows import as_dict, parse_interaction
 
@@ -20,16 +21,22 @@ def http_code(e):
     return getattr(e, "status_code", None) or getattr(e, "code", None)
 
 
-def interaction_request(model, pdf_uris, prompt, system, think, max_out):
-    """Anfrage für client.interactions.create(). Die PDFs stehen ganz vorn, immer in derselben Reihenfolge (gleicher
+def input_part(f):
+    """Eingabeteil für eine Datei der Files API: Der Inhaltstyp (document, image, audio oder video) folgt aus ihrem
+    MIME-Typ, die Datei selbst steht als uri darin."""
+    mime = file_mime(f)
+    return {"type": mime_kind(mime), "uri": f.uri, "mime_type": mime}
+
+
+def interaction_request(model, files, prompt, system, think, max_out):
+    """Anfrage für client.interactions.create(). Die Dateien stehen ganz vorn, immer in derselben Reihenfolge (gleicher
     Prefix fürs Caching), dann der Prompt. background=True verlangt store=True (das ist auch der Standard)."""
     config = {"max_output_tokens": int(max_out)}
     if think != "Standard":
         config["thinking_level"] = think
     request = {
         "model": model,
-        "input": [{"type": "document", "uri": uri, "mime_type": "application/pdf"} for uri in pdf_uris]
-                 + [{"type": "text", "text": prompt}],
+        "input": [input_part(f) for f in files] + [{"type": "text", "text": prompt}],
         "generation_config": config,
         "background": True,
         "store": True,
@@ -63,15 +70,14 @@ def cancel_interactions(client, ids):
     return errors
 
 
-def start_background(client, rt, model, pdfs, pdf_names, prompts, system, think, max_out, label):
+def start_background(client, rt, model, files, names, prompts, system, think, max_out, label):
     """Jeden Prompt als Hintergrund-Interaktion starten (alle gleichzeitig) und den Eintrag im Verlauf speichern. Scheitert
     einer, werden die schon gestarteten wieder abgebrochen, damit nichts unbeobachtet Kosten verursacht."""
     keyed = {f"prompt-{i}": p for i, p in enumerate(prompts, 1)}
-    uris = [f.uri for f in pdfs]
     started = {}
     try:
         for key, prompt in keyed.items():
-            created = create_interaction(client, interaction_request(model, uris, prompt, system, think, max_out))
+            created = create_interaction(client, interaction_request(model, files, prompt, system, think, max_out))
             started[key] = created.id
     except Exception as e:
         cancel_interactions(client, started.values())
@@ -79,9 +85,10 @@ def start_background(client, rt, model, pdfs, pdf_names, prompts, system, think,
             raise
         raise RuntimeError(f"Prompt {len(started) + 1} von {len(keyed)} ließ sich nicht starten ({e}). "
                            f"Die {len(started)} schon gestarteten Läufe wurden abgebrochen.") from e
+    # pdf und pdfs heißen aus Kompatibilität mit älteren Einträgen noch so, enthalten aber die Namen aller Dateien
     entry = {"name": f"bg-{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:4]}", "provider": PROVIDER_GEMINI,
-             "mode": "background", "label": label, "model": model, "pdf": ", ".join(pdf_names) or None,
-             "pdfs": list(pdf_names), "prompts": keyed, "system": system, "think": think, "max_out": int(max_out),
+             "mode": "background", "label": label, "model": model, "pdf": ", ".join(names) or None,
+             "pdfs": list(names), "prompts": keyed, "system": system, "think": think, "max_out": int(max_out),
              "interactions": started, "created": datetime.now().isoformat(timespec="seconds")}
     mutate_jobs(rt.lock, lambda jobs: jobs.insert(0, entry))
     return entry

@@ -70,9 +70,11 @@ class _Files:
 
     def upload(self, file, config):
         p = self.p
-        if hasattr(file, "read"):  # PDF-Bytes
+        if hasattr(file, "read"):  # Datei-Bytes (PDF, Bild, Text …)
             p.uploads.append(file.read())
+            p.upload_mimes.append(config.mime_type)
             n = len(p.uploads)
+            p.file_mimes[f"files/pdf{n}"] = config.mime_type
             return SimpleNamespace(name=f"files/pdf{n}", uri=f"https://example.test/v1beta/files/pdf{n}",
                                    state=_state(p.upload_state), mime_type=config.mime_type)
         path = Path(file)  # JSONL-Datei eines Batches
@@ -85,7 +87,8 @@ class _Files:
         state = self.p.get_states.pop(0) if self.p.get_states else None
         if isinstance(state, Exception):
             raise state
-        return SimpleNamespace(name=name, uri=f"https://example.test/v1beta/{name}", state=_state(state))
+        return SimpleNamespace(name=name, uri=f"https://example.test/v1beta/{name}", state=_state(state),
+                               mime_type=self.p.file_mimes.get(name))
 
     def download(self, file):
         p = self.p
@@ -181,6 +184,7 @@ class FakeGemini:
     batch_state / get_error: Zustand bzw. Fehler von batches.get. create_error: Fehler von batches.create.
     batch_cached: Cache-Token in Batch-Ergebnissen.
     upload_state / get_states: Dateizustände der Files API (z. B. "PROCESSING", Exception für „abgelaufen“).
+    uploads / upload_mimes: Inhalt und MIME-Typ jeder hochgeladenen Datei. files.get meldet den MIME-Typ wieder.
     interaction_results: je Interaktion (Reihenfolge der Anlage) die Argumente für make_interaction, mit denen
             interactions.get antwortet (z. B. {"status": "in_progress"}), oder eine Exception. Fehlt ein Eintrag, ist
             die Interaktion fertig. interaction_create_errors: {Nummer des create-Aufrufs ab 0: Exception}.
@@ -201,7 +205,8 @@ class FakeGemini:
         self.get_states = list(get_states or [])
         self.create_error = create_error
         self.client_kwargs = []  # Argumente der Client-Erzeugung (z. B. api_key)
-        self.uploads, self.jsonl_uploads, self.jsonl_configs = [], [], []
+        self.uploads, self.upload_mimes, self.file_mimes = [], [], {}
+        self.jsonl_uploads, self.jsonl_configs = [], []
         self.batch_requests, self.created_batches, self.cancelled = [], [], []
         self.get_calls = 0
         self.interaction_results = list(interaction_results or [])
@@ -326,9 +331,10 @@ class _OpenAIFiles:
             p.batch_requests = [json.loads(line) for line in file.read().decode("utf-8").splitlines() if line.strip()]
             return FileObject(id="file-jsonl1", bytes=1, created_at=1790000000, filename=Path(file.name).name,
                               object="file", purpose="batch", status="processed")
-        filename, stream, _mime = file  # PDF: (Name, Bytes-Strom, MIME-Typ)
+        filename, stream, mime = file  # Datei: (Name, Bytes-Strom, MIME-Typ)
         p.uploads.append(stream.read())
         p.upload_names.append(filename)
+        p.upload_mimes.append(mime)
         obj = FileObject(id=f"file-pdf{len(p.uploads)}", bytes=len(p.uploads[-1]), created_at=1790000000,
                          filename=filename, object="file", purpose=purpose, status="processed")
         p.pdf_files[obj.id] = obj
@@ -394,7 +400,9 @@ class FakeOpenAI:
     failing: {Schlüssel: Fehlerobjekt} der Anfragen, die statt in der Ausgabedatei in der Fehlerdatei stehen.
     bodies: {Schlüssel: Argumente für make_openai_body} für einzelne Antworten (z. B. unvollständige).
     batch_errors: Fehler des ganzen Batches (Liste von {code, message, line}), z. B. bei Status failed.
-    gone, file_status: IDs hochgeladener PDFs, die bei OpenAI fehlen (404), und abweichende Dateistatus.
+    gone, file_status: IDs hochgeladener Dateien, die bei OpenAI fehlen (404), und abweichende Dateistatus.
+    uploads, upload_names, upload_mimes: Inhalt, Name und MIME-Typ jeder hochgeladenen Datei (der Zweck steht in
+            file_calls und im FileObject).
     """
 
     def __init__(self, *, batch_status="completed", get_error=None, create_error=None, upload_error=None,
@@ -404,7 +412,7 @@ class FakeOpenAI:
         self.batch_text, self.batch_cached = batch_text, batch_cached
         self.failing, self.bodies, self.batch_errors = dict(failing or {}), dict(bodies or {}), list(batch_errors or [])
         self.client_kwargs = []  # Argumente der Client-Erzeugung (z. B. api_key)
-        self.uploads, self.upload_names, self.pdf_files = [], [], {}
+        self.uploads, self.upload_names, self.upload_mimes, self.pdf_files = [], [], [], {}
         self.jsonl_uploads, self.batch_requests, self.file_calls = [], [], []
         self.created_batches, self.cancelled, self.content_calls = [], [], []
         self.gone, self.file_status = set(), {}

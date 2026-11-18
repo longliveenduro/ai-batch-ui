@@ -76,8 +76,8 @@ def choose_label(typed, kind, prompts, get_client, model, think, auto=True):
 
 
 def entry_text(x):
-    """Alles, was die Suche durchsucht, klein geschrieben: Name, Beschreibung, ID, PDFs und Prompts eines Eintrags.
-    Ältere Einträge ohne Beschreibung oder PDFs sind erlaubt."""
+    """Alles, was die Suche durchsucht, klein geschrieben: Name, Beschreibung, ID, Dateinamen und Prompts eines
+    Eintrags. Ältere Einträge ohne Beschreibung oder Dateien sind erlaubt."""
     parts = [x.get("label"), x.get("description"), x.get("name"), x.get("pdf"), *(x.get("prompts") or {}).values()]
     return "\n".join(str(p) for p in parts if p).casefold()
 

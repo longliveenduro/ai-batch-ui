@@ -186,56 +186,91 @@ def test_mutate_jobs_is_thread_safe_and_leaves_no_temp_file(app, home, rt):
     assert not (home / "data" / "batch_jobs.tmp").exists()
 
 
-# ---------- PDF-Upload ----------
-def test_upload_pdf_uploads_once_and_remembers_the_file_by_content(app, home):
+# ---------- Datei-Upload ----------
+def test_upload_file_uploads_once_and_remembers_the_file_by_content(app, home):
     fake = FakeGemini()
-    first = app.upload_pdf(fake, "buch.pdf", b"PDF-A")
-    second = app.upload_pdf(fake, "andere-bezeichnung.pdf", b"PDF-A")
+    first = app.upload_file(fake, "buch.pdf", b"PDF-A")
+    second = app.upload_file(fake, "andere-bezeichnung.pdf", b"PDF-A")
     assert len(fake.uploads) == 1 and second.uri == first.uri
     key = hashlib.sha256(b"PDF-A").hexdigest()
     assert json.loads((home / "data" / "pdf_files.json").read_text()) == {key: first.name}
 
 
-def test_upload_pdf_different_content_gets_a_new_file(app):
+def test_upload_file_different_content_gets_a_new_file(app):
     fake = FakeGemini()
-    a, b = app.upload_pdf(fake, "a.pdf", b"A"), app.upload_pdf(fake, "b.pdf", b"B")
+    a, b = app.upload_file(fake, "a.pdf", b"A"), app.upload_file(fake, "b.pdf", b"B")
     assert len(fake.uploads) == 2 and a.uri != b.uri
 
 
-def test_upload_pdf_reuploads_when_the_file_expired(app, home):
+def test_upload_file_reuploads_when_the_file_expired(app, home):
     fake = FakeGemini()
-    app.upload_pdf(fake, "b.pdf", b"X")
+    app.upload_file(fake, "b.pdf", b"X")
     fake.get_states.append(ApiError(404))  # bei Google abgelaufen
-    again = app.upload_pdf(fake, "b.pdf", b"X")
+    again = app.upload_file(fake, "b.pdf", b"X")
     assert len(fake.uploads) == 2
     assert list(json.loads((home / "data" / "pdf_files.json").read_text()).values()) == [again.name]
 
 
-def test_upload_pdf_reuploads_when_the_remembered_file_is_not_active(app):
+def test_upload_file_reuploads_when_the_remembered_file_is_not_active(app):
     fake = FakeGemini()
-    app.upload_pdf(fake, "b.pdf", b"X")
+    app.upload_file(fake, "b.pdf", b"X")
     fake.get_states.append("PROCESSING")
-    app.upload_pdf(fake, "b.pdf", b"X")
+    app.upload_file(fake, "b.pdf", b"X")
     assert len(fake.uploads) == 2
 
 
-def test_upload_pdf_waits_while_google_processes_the_file(app, fake_time):
+def test_upload_file_waits_while_google_processes_the_file(app, fake_time):
     fake = FakeGemini(upload_state="PROCESSING", get_states=["PROCESSING", "ACTIVE"])
-    f = app.upload_pdf(fake, "b.pdf", b"X")
+    f = app.upload_file(fake, "b.pdf", b"X")
     assert f.state.name == "ACTIVE" and fake_time.sleeps == [2, 2]
 
 
-def test_upload_pdf_raises_and_remembers_nothing_when_processing_fails(app, home):
+def test_upload_file_raises_and_remembers_nothing_when_processing_fails(app, home):
     with pytest.raises(RuntimeError, match="FAILED"):
-        app.upload_pdf(FakeGemini(upload_state="FAILED"), "b.pdf", b"X")
+        app.upload_file(FakeGemini(upload_state="FAILED"), "b.pdf", b"X")
     assert not (home / "data" / "pdf_files.json").exists()
+
+
+@pytest.mark.parametrize("name, mime", [
+    ("buch.pdf", "application/pdf"),
+    ("Scan.PDF", "application/pdf"),  # Groß- und Kleinschreibung der Endung ist egal
+    ("bericht.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    ("zahlen.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    ("tabelle.csv", "text/csv"),
+    ("notiz.md", "text/plain"),
+    ("daten.json", "text/plain"),
+    ("foto.jpeg", "image/jpeg"),
+    ("bild.png", "image/png"),
+    ("ton.mp3", "audio/mp3"),
+    ("film.mp4", "video/mp4"),
+])
+def test_upload_file_sends_the_mime_type_of_the_extension(app, name, mime):
+    fake = FakeGemini()
+    f = app.upload_file(fake, name, b"X")
+    assert fake.upload_mimes == [mime] and f.mime_type == mime
+
+
+def test_upload_file_rejects_an_unknown_type_before_anything_is_uploaded(app, home):
+    fake = FakeGemini()
+    with pytest.raises(ValueError, match="Dateityp .zip"):
+        app.upload_file(fake, "archiv.zip", b"X")
+    with pytest.raises(ValueError, match="Ohne Endung"):
+        app.upload_file(fake, "LIESMICH", b"X")
+    assert fake.uploads == [] and not (home / "data" / "pdf_files.json").exists()
+
+
+def test_upload_file_remembers_any_file_by_content_and_keeps_its_mime_type(app):
+    fake = FakeGemini()
+    first = app.upload_file(fake, "foto.png", b"BILD")
+    again = app.upload_file(fake, "anderes-foto.png", b"BILD")
+    assert len(fake.uploads) == 1 and again.uri == first.uri and again.mime_type == "image/png"
 
 
 # ---------- Batch-Anfragen ----------
 PDFS = [SimpleNamespace(uri="https://example.test/v1beta/files/A"), SimpleNamespace(uri="https://example.test/v1beta/files/B")]
 
 
-def test_start_batch_builds_requests_with_pdfs_first(app, home):
+def test_start_batch_builds_requests_with_the_files_first(app, home):
     fake = FakeGemini()
     job, keyed = app.start_batch(fake, "gemini-4-carbon", PDFS, ["P1", "P2"], "Sei kurz.", "high", 32768, "lauf")
     assert keyed == {"prompt-1": "P1", "prompt-2": "P2"} and job.name.startswith("batches/")
@@ -248,6 +283,19 @@ def test_start_batch_builds_requests_with_pdfs_first(app, home):
     assert request["contents"][0]["role"] == "user"
     assert request["generation_config"] == {"max_output_tokens": 32768, "thinking_config": {"thinking_level": "high"}}
     assert request["system_instruction"] == {"parts": [{"text": "Sei kurz."}]}
+
+
+def test_start_batch_gives_every_file_its_own_mime_type_and_keeps_the_order(app):
+    base = "https://example.test/v1beta/files/"
+    files = [SimpleNamespace(uri=base + "IMG", mime_type="image/png"),
+             SimpleNamespace(uri=base + "DOC", mime_type="application/pdf"),
+             SimpleNamespace(uri=base + "TXT", mime_type="text/plain")]
+    fake = FakeGemini()
+    app.start_batch(fake, "gemini-4-carbon", files, ["P1"], "", "Standard", 1024, "x")
+    parts = fake.batch_requests[0]["request"]["contents"][0]["parts"]
+    assert [(p["file_data"]["file_uri"].rsplit("/", 1)[1], p["file_data"]["mime_type"]) for p in parts[:3]] == [
+        ("IMG", "image/png"), ("DOC", "application/pdf"), ("TXT", "text/plain")]
+    assert parts[3] == {"text": "P1"}
 
 
 def test_start_batch_uploads_the_jsonl_into_the_data_folder_and_creates_the_batch(app, home):
@@ -265,7 +313,7 @@ def test_start_batch_standard_thinking_and_no_system_send_neither(app):
     request = fake.batch_requests[0]["request"]
     assert request["generation_config"] == {"max_output_tokens": 2048}
     assert "system_instruction" not in request
-    assert request["contents"][0]["parts"] == [{"text": "P1"}]  # ohne PDF nur der Prompt
+    assert request["contents"][0]["parts"] == [{"text": "P1"}]  # ohne Datei nur der Prompt
 
 
 def test_start_batch_keeps_umlauts_readable_in_the_file(app, home):

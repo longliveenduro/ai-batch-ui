@@ -20,6 +20,12 @@ def pdfs(n=1):
     return [SimpleNamespace(uri=f"https://example.test/v1beta/files/pdf{k}") for k in range(1, n + 1)]
 
 
+def media(*mimes):
+    """Hochgeladene Dateien mit dem MIME-Typ, den die Files API für sie führt."""
+    return [SimpleNamespace(uri=f"https://example.test/v1beta/files/m{k}", mime_type=mime)
+            for k, mime in enumerate(mimes, 1)]
+
+
 def start(app, rt, fake, prompts=("P1",), *, n_pdfs=1, system="", think="high", max_out=262144):
     names = [f"{c}.pdf" for c in "ABC"[:n_pdfs]]
     return app.start_background(fake, rt, "gemini-4-carbon", pdfs(n_pdfs), names, list(prompts), system, think,
@@ -27,7 +33,7 @@ def start(app, rt, fake, prompts=("P1",), *, n_pdfs=1, system="", think="high", 
 
 
 # ---------- Anfrageaufbau ----------
-def test_each_prompt_becomes_a_background_interaction_with_the_pdfs_first(app, rt):
+def test_each_prompt_becomes_a_background_interaction_with_the_files_first(app, rt):
     fake = FakeGemini()
     start(app, rt, fake, ["P1", "P2"], n_pdfs=2)
     assert len(fake.interaction_requests) == 2
@@ -48,7 +54,7 @@ def test_system_instruction_is_sent_and_standard_thinking_sends_no_level(app, rt
     assert request["generation_config"] == {"max_output_tokens": 100000}
 
 
-def test_without_pdfs_only_the_prompt_is_sent(app, rt):
+def test_without_files_only_the_prompt_is_sent(app, rt):
     fake = FakeGemini()
     start(app, rt, fake, n_pdfs=0)
     assert fake.interaction_requests[0]["input"] == [{"type": "text", "text": "P1"}]
@@ -57,11 +63,30 @@ def test_without_pdfs_only_the_prompt_is_sent(app, rt):
 def test_the_request_is_valid_for_the_sdk_schema(app):
     """Die Anfrage muss dem Schema des SDK entsprechen (Schlüsselnamen von generation_config sind dort Felder)."""
     from google.genai import interactions
-    request = app.interaction_request("gemini-4-carbon", ["https://example.test/v1beta/files/pdf1"], "Frage",
-                                      "Sei kurz.", "high", 262144)
+    request = app.interaction_request("gemini-4-carbon", pdfs(), "Frage", "Sei kurz.", "high", 262144)
     parsed = interactions.CreateModelInteraction.model_validate(request)
     assert parsed.background is True and parsed.store is True and parsed.system_instruction == "Sei kurz."
     assert parsed.generation_config.max_output_tokens == 262144 and parsed.generation_config.thinking_level == "high"
+
+
+def test_every_kind_of_file_is_an_input_part_of_its_own_type(app):
+    """Der Inhaltstyp folgt aus dem MIME-Typ der Datei, und das SDK nimmt jede der vier Arten als Eingabe an."""
+    from google.genai import interactions
+    files = media("application/pdf", "text/plain", "image/png", "audio/mp3", "video/mp4")
+    request = app.interaction_request("gemini-4-carbon", files, "Frage", "", "Standard", 1024)
+    assert [(p["type"], p["mime_type"]) for p in request["input"][:5]] == [
+        ("document", "application/pdf"), ("document", "text/plain"), ("image", "image/png"), ("audio", "audio/mp3"),
+        ("video", "video/mp4")]
+    assert [p["uri"].rsplit("/", 1)[1] for p in request["input"][:5]] == ["m1", "m2", "m3", "m4", "m5"]
+    assert request["input"][5] == {"type": "text", "text": "Frage"}
+    parsed = interactions.CreateModelInteraction.model_validate(request)
+    assert [type(part).__name__ for part in parsed.input] == [
+        "DocumentContent", "DocumentContent", "ImageContent", "AudioContent", "VideoContent", "TextContent"]
+
+
+def test_a_file_without_a_mime_type_is_sent_as_a_pdf_document(app):
+    assert app.input_part(SimpleNamespace(uri="https://example.test/f")) == {
+        "type": "document", "uri": "https://example.test/f", "mime_type": "application/pdf"}
 
 
 # ---------- Start ----------
@@ -315,6 +340,24 @@ def test_background_start_sends_the_pdfs_and_stores_the_entry(use_fake, home, ap
     assert entry["pdf"] == "Buch 1.pdf, Buch 2.pdf" and "state" not in entry
     assert entry["interactions"] == dict(zip(["prompt-1", "prompt-2"], IDS))
     assert at.session_state["sel"] == app.entry_label(entry)  # der neue Eintrag ist im Jobs-Tab vorausgewählt
+
+
+@ui
+def test_background_start_sends_images_and_text_files_as_their_own_input_types(use_fake, home):
+    fake = use_fake()
+    at = new_app()
+    at.run()
+    background_mode(at)
+    at.file_uploader[0].set_value([("Foto.png", b"PNG", "image/png"), ("Notiz.md", b"# Hallo", "text/markdown"),
+                                   ("Buch.pdf", b"PDF", PDF)])
+    set_prompts(at, "Frage")
+    click(at, "Im Hintergrund starten")
+    assert not at.exception and not at.error
+    assert fake.upload_mimes == ["image/png", "text/plain", "application/pdf"]
+    parts = fake.interaction_requests[0]["input"]
+    assert [(p["type"], p.get("mime_type")) for p in parts] == [
+        ("image", "image/png"), ("document", "text/plain"), ("document", "application/pdf"), ("text", None)]
+    assert read_history(home)[0]["pdf"] == "Foto.png, Notiz.md, Buch.pdf"
 
 
 @ui
