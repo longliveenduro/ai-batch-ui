@@ -6,7 +6,7 @@ Anbieter: Gemini (Batch und Hintergrund) oder OpenAI (nur Batch, Responses-Endpu
 Modi:     Batch (asynchron, 50 % Rabatt) oder Hintergrund (nur Gemini: Interactions API mit background=true, Long Decode
           bis 1.048.576 Ausgabe-Token, läuft bei Google und braucht die App nicht, Standardpreis).
 Ordner:   conf/ (Zugangsdaten, geheim: credentials.json, token.json) und data/ (batch_jobs.json = Verlauf und
-          Ergebnisse, pdf_files.json und openai_files.json = hochgeladene PDFs, requests_*.jsonl = gesendete
+          Ergebnisse, pdf_files.json und openai_files.json = hochgeladene Dateien, requests_*.jsonl = gesendete
           Batch-Anfragen).
           Beide liegen im Projektordner neben src/ (dem Ordner dieser Datei), oder unter dem Ordner aus der
           Umgebungsvariable AI_BATCH_UI_HOME.
@@ -32,11 +32,12 @@ from aibui.config import (BATCH_MAX_OUT, BG_DEFAULT_OUT, BG_MAX_OUT, DEFAULT_MOD
                           PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDERS, SEPARATOR, TABS, TALK_NEW, THINK_LEVELS,
                           prepare_folders)
 from aibui.drive import drive_fetch, drive_id, drive_service
+from aibui.files import check_files, types_overview
 from aibui.forms import delete_entry, entry_label, generate_title, reuse_inputs, save_details
-from aibui.gemini import start_batch, upload_pdf
+from aibui.gemini import start_batch, upload_file
 from aibui.history import load_jobs, mutate_jobs, runtime
 from aibui.naming import choose_label, default_label, search_jobs
-from aibui.openai_batch import start_openai_batch, upload_pdf_openai
+from aibui.openai_batch import start_openai_batch, upload_file_openai
 from aibui.providers import batch_info, entry_mode, entry_provider, make_client
 from aibui.talk import entry_group, parse_conversation
 from aibui.views import job_panel
@@ -57,7 +58,7 @@ with st.sidebar:
         st.session_state.setdefault("model_openai", DEFAULT_OPENAI_MODEL)
         model = st.text_input("Modell", key="model_openai",
                               help="Modellname laut OpenAI, zum Beispiel gpt-6-astra, gpt-6.1-sol oder gpt-6-luna. "
-                                   "Das Modell muss die Batch API und PDF-Eingaben unterstützen.")
+                                   "Das Modell muss die Batch API und Dateieingaben (bei Bildern: Bildeingaben) unterstützen.")
     else:
         st.session_state.setdefault("model_gemini", DEFAULT_MODEL)
         model = st.text_input("Modell", key="model_gemini")
@@ -121,7 +122,9 @@ with tab_new:
     else:
         mode = st.radio("Modus", [MODE_BATCH, MODE_BG], horizontal=True, key="mode")
     bg = mode == MODE_BG
-    uploads = st.file_uploader("PDF-Dateien (mehrere möglich)", type="pdf", accept_multiple_files=True)
+    # Kein type=: Welche Typen gehen, hängt vom Anbieter ab (check_files). Die Hilfe bleibt gleich, denn ein anderer Text
+    # würde das Widget beim Anbieterwechsel neu aufbauen und seine Dateien verlieren.
+    uploads = st.file_uploader("Dateien (mehrere möglich)", accept_multiple_files=True, help=types_overview())
     with st.container(border=True):
         st.markdown("**PDFs aus Google Drive hinzufügen** (optional)")
         if st.button("Meine PDFs aus Drive laden"):
@@ -138,13 +141,19 @@ with tab_new:
         links = st.text_area("Oder Drive-Links / Datei-IDs einfügen (eine pro Zeile)", height=80)
     pasted = [drive_id(x) for x in links.splitlines() if x.strip()]
     drive_refs = [drive_list[c] for c in chosen] + pasted
-    pdf_order = [f.name for f in uploads] + chosen + [f"Drive-Datei {ref[:6]}" for ref in pasted]
-    if pdf_order:
-        st.caption("Reihenfolge der PDFs in jeder Anfrage: "
-                   + ", ".join(f"{k}. {n}" for k, n in enumerate(pdf_order, 1))
+    file_order = [f.name for f in uploads] + chosen + [f"Drive-Datei {ref[:6]}" for ref in pasted]
+    if file_order:
+        st.caption("Reihenfolge der Dateien in jeder Anfrage: "
+                   + ", ".join(f"{k}. {n}" for k, n in enumerate(file_order, 1))
                    + " (hochgeladene Dateien zuerst, dann Drive). Gleiche Dateien werden nur einmal gesendet.")
     else:
-        st.caption("Kein PDF angehängt: Die Prompts werden ohne PDF gesendet.")
+        st.caption("Keine Datei angehängt: Die Prompts werden ohne Datei gesendet. Möglich sind Dokumente (PDF, Word, "
+                   "PowerPoint, Excel, Text), Bilder und bei Gemini auch Audio und Video.")
+    problems = check_files(provider, [f.name for f in uploads])  # Typen, die der gewählte Anbieter nicht annimmt
+    if problems:
+        st.error("\n".join(f"- {p}" for p in problems)
+                 + "\n\nDer Start ist gesperrt, bis diese Dateien entfernt sind. Die erlaubten Typen stehen in der "
+                   "Hilfe (?) am Feld „Dateien“.")
 
     system = st.text_area("Systemanweisung (optional)", height=80, key="system")
     raw = st.text_area("Prompts (mehrere mit einer Zeile --- trennen)", height=260, key="raw")
@@ -197,7 +206,7 @@ with tab_new:
                                "Beschreibung später ändern.")
     if naming_on and provider == PROVIDER_OPENAI and not label.strip():
         st.caption(f"Der Name wird mit Gemini erzeugt: Ein Auszug der Prompts (höchstens {NAME_SOURCE_CHARS} Zeichen, "
-                   "ohne PDFs) geht dafür an Google, auch bei einem OpenAI-Lauf. Abschalten: Seitenleiste, "
+                   "ohne Dateien) geht dafür an Google, auch bei einem OpenAI-Lauf. Abschalten: Seitenleiste, "
                    "„Namen der Einträge“.")
     if bg:
         st.caption(
@@ -205,25 +214,25 @@ with tab_new:
             "API, background=true), alle gleichzeitig. Long Decode setzt die Antwort über 65.536 Token hinaus fort "
             "(bis 1.048.576 Token minus Eingabe). Die App muss nicht laufen, sie fragt nur den Stand ab. Es gilt der "
             "Standardpreis statt des Batch-Rabatts, und weil alle Prompts gleichzeitig starten, ist ein Cache-Treffer "
-            "für das PDF nicht garantiert. Gespräche mit mehreren Prompts gibt es hier nicht (je Prompt eine "
+            "für die Dateien nicht garantiert. Gespräche mit mehreren Prompts gibt es hier nicht (je Prompt eine "
             "Interaktion), eine Fortsetzung steckt im Prompt."
         )
     elif provider == PROVIDER_OPENAI:
         st.caption(
             f"{len(prompts)} Prompt(s) erkannt. Die OpenAI Batch API kostet 50 % des Standardpreises und liefert die "
-            "Ergebnisse innerhalb von 24 Stunden. Die PDFs stehen in jeder Anfrage an erster Stelle, damit der "
+            "Ergebnisse innerhalb von 24 Stunden. Die Dateien stehen in jeder Anfrage an erster Stelle, damit der "
             "Prefix für das automatische Caching (ab 1.024 Token) identisch ist. Treffer siehst du unter "
             "„Jobs und Ergebnisse“."
         )
     else:
         st.caption(
             f"{len(prompts)} Prompt(s) erkannt. Batch kostet 50 % des Standardpreises. Carbon unterstützt nur "
-            "implizites Caching (ab 4.096 Token, ohne Rabattgarantie): Die PDFs stehen in jeder Anfrage an erster "
+            "implizites Caching (ab 4.096 Token, ohne Rabattgarantie): Die Dateien stehen in jeder Anfrage an erster "
             "Stelle, damit der Prefix identisch ist. Treffer siehst du unter „Jobs und Ergebnisse“."
         )
 
     if st.button("Im Hintergrund starten" if bg else "Batch starten", type="primary",
-                 disabled=not prompts or bool(unfinished)):
+                 disabled=not prompts or bool(unfinished) or bool(problems)):
         try:
             with st.status("Bereite Anfragen vor …" + HINT) as status:
                 files = [(f.name, f.getvalue()) for f in uploads]
@@ -236,28 +245,30 @@ with tab_new:
                     if digest not in seen:
                         seen.add(digest)
                         unique.append((fname, data))
-                names, pdfs = [n for n, _ in unique], []
+                names, uploaded = [n for n, _ in unique], []
+                upload = upload_file_openai if provider == PROVIDER_OPENAI else upload_file
                 for k, (fname, data) in enumerate(unique, 1):
-                    status.update(label=f"Lade PDF {k} von {len(unique)} zu {provider} hoch …" + HINT)
-                    pdfs.append((upload_pdf_openai if provider == PROVIDER_OPENAI else upload_pdf)(client, fname, data))
+                    status.update(label=f"Lade Datei {k} von {len(unique)} zu {provider} hoch …" + HINT)
+                    uploaded.append(upload(client, fname, data))
                 if naming_on and not label.strip():
                     status.update(label="Erzeuge den Namen …" + HINT)
                 title, generated, name_error = choose_label(label, kind, prompts, gemini_client, name_model, name_think,
                                                             auto_name)
                 status.update(label="Starte …" + HINT)
                 if bg:
-                    entry = start_background(client, rt, model, pdfs, names, prompts, system.strip(), think, max_out,
-                                             title)
+                    entry = start_background(client, rt, model, uploaded, names, prompts, system.strip(), think,
+                                             max_out, title)
                 elif provider == PROVIDER_OPENAI:
-                    batch_id, keyed = start_openai_batch(client, model, [f.id for f in pdfs], prompts, system.strip(),
-                                                         think, max_out, title)
+                    batch_id, keyed = start_openai_batch(client, model, uploaded, prompts, system.strip(), think,
+                                                         max_out, title)
+                    # pdf und pdfs heißen aus Kompatibilität mit älteren Einträgen noch so, enthalten aber alle Dateinamen
                     entry = {"name": batch_id, "provider": PROVIDER_OPENAI, "label": title, "model": model,
                              "pdf": ", ".join(names) or None, "pdfs": names, "prompts": keyed, "system": system.strip(),
                              "think": think, "max_out": int(max_out),
                              "created": datetime.now().isoformat(timespec="seconds")}
                     mutate_jobs(rt.lock, lambda jobs: jobs.insert(0, entry))
                 else:
-                    job, keyed = start_batch(client, model, pdfs, prompts, system.strip(), think, max_out, title)
+                    job, keyed = start_batch(client, model, uploaded, prompts, system.strip(), think, max_out, title)
                     entry = {"name": job.name, "provider": PROVIDER_GEMINI, "label": title, "model": model,
                              "pdf": ", ".join(names) or None, "pdfs": names, "prompts": keyed,
                              "system": system.strip(), "think": think, "max_out": int(max_out),
@@ -286,9 +297,9 @@ with tab_jobs:
     name_note = st.session_state.pop("name_note", None)  # einmaliger Hinweis (Name erzeugen gescheitert)
     if name_note:
         st.warning(name_note)
-    query = st.text_input("Suche", key="jobs_search", placeholder="Name, Beschreibung, Prompt, PDF oder ID",
+    query = st.text_input("Suche", key="jobs_search", placeholder="Name, Beschreibung, Prompt, Datei oder ID",
                           help="Zeigt nur Einträge, in denen alle Suchwörter vorkommen (Groß- und Kleinschreibung "
-                               "egal). Durchsucht werden Name, Beschreibung, ID, PDF-Namen und Prompts."
+                               "egal). Durchsucht werden Name, Beschreibung, ID, Dateinamen und Prompts."
                           ) if all_jobs else ""
     jobs = search_jobs(all_jobs, query)
     if query.strip():
@@ -310,7 +321,7 @@ with tab_jobs:
                     else "Batch (OpenAI)" if entry_prov == PROVIDER_OPENAI else "Batch")
         st.caption(f"{j['name']}, {kind_txt}, gesendet: Modell {j['model']}, "
                    f"Denktiefe {j.get('think', 'unbekannt')}, max. {j.get('max_out', '?')} Ausgabe-Token, "
-                   f"PDF: {j['pdf'] or 'keins'}, {len(j['prompts'])} Prompt(s)")
+                   f"Dateien: {j['pdf'] or 'keine'}, {len(j['prompts'])} Prompt(s)")
         if mode_j == "sync":
             running = False  # ältere synchrone Einträge: nichts läuft mehr, nichts ist abzufragen
         else:

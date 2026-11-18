@@ -51,7 +51,7 @@ def test_defaults_in_batch_mode(use_fake):
     assert at.number_input(key="max_batch").value == 32768 and at.number_input(key="max_batch").max == 32768
     assert not [n for n in at.number_input if n.key in ("group", "max_sync")]  # den synchronen Modus gibt es nicht mehr
     assert button(at, "Batch starten").disabled  # ohne Prompts
-    assert any("Kein PDF angehängt" in c for c in captions(at))
+    assert any("Keine Datei angehängt" in c and "Bilder" in c for c in captions(at))
 
 
 @pytest.mark.parametrize("text, expected", [
@@ -90,6 +90,47 @@ def test_batch_start_sends_both_pdfs_and_stores_the_entry(use_fake, home, app):
     assert entry["prompts"] == {"prompt-1": "Erster Prompt", "prompt-2": "Zweiter Prompt"}
     assert at.session_state["sel"] == app.entry_label(entry)  # der neue Eintrag ist im Jobs-Tab vorausgewählt
     assert (home / "data" / "pdf_files.json").exists() and list((home / "data").glob("requests_*.jsonl"))
+
+
+def test_batch_start_sends_documents_images_and_text_with_their_own_mime_types(use_fake, home):
+    fake = use_fake()
+    at = new_app()
+    at.run()
+    docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    at.file_uploader[0].set_value([("Bericht.docx", b"DOCX", docx), ("Foto.PNG", b"PNG", "image/png"),
+                                   ("Notiz.md", b"# Hallo", "text/markdown"), ("Aufnahme.mp3", b"MP3", "audio/mpeg"),
+                                   ("Buch.pdf", b"PDF", PDF)])
+    set_prompts(at, "Frage")
+    click(at, "Batch starten")
+    assert not at.exception and not at.error and "läuft" in at.success[0].value
+    assert fake.upload_mimes == [docx, "image/png", "text/plain", "audio/mp3", "application/pdf"]
+    parts = fake.batch_requests[0]["request"]["contents"][0]["parts"]
+    assert [p["file_data"]["mime_type"] for p in parts[:5]] == fake.upload_mimes  # in der Reihenfolge des Formulars
+    assert parts[5] == {"text": "Frage"}
+    assert read_history(home)[0]["pdf"] == "Bericht.docx, Foto.PNG, Notiz.md, Aufnahme.mp3, Buch.pdf"
+
+
+def test_the_uploader_takes_every_file_and_the_provider_check_decides(use_fake):
+    use_fake()
+    at = new_app()
+    at.run()
+    assert list(at.file_uploader[0].proto.type) == []  # keine Einschränkung am Feld: Was geht, hängt vom Anbieter ab
+
+
+@pytest.mark.parametrize("bad", ["archiv.zip", "LIESMICH"])
+def test_a_file_type_the_app_does_not_know_blocks_the_start_until_it_is_removed(use_fake, bad):
+    fake = use_fake()
+    at = new_app()
+    at.run()
+    at.file_uploader[0].set_value([("Buch.pdf", b"PDF", PDF), (bad, b"X", "application/octet-stream")])
+    set_prompts(at, "Frage")
+    assert len(at.error) == 1 and f"„{bad}“" in at.error[0].value and "Buch.pdf" not in at.error[0].value
+    assert "Der Start ist gesperrt" in at.error[0].value
+    assert button(at, "Batch starten").disabled
+    at.file_uploader[0].set_value([("Buch.pdf", b"PDF", PDF)])
+    at.run()
+    assert not at.error and not button(at, "Batch starten").disabled
+    assert fake.uploads == []  # die Prüfung geschah vor jedem Upload
 
 
 def test_the_model_field_decides_which_model_is_used(use_fake):

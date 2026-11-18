@@ -24,12 +24,12 @@ def _base_dir():
 
 BASE = _base_dir()
 CONF_DIR = BASE / "conf"  # Konfiguration und Zugangsdaten (geheim)
-DATA_DIR = BASE / "data"  # erzeugte Daten: Verlauf, PDF-Zuordnung, gesendete Batch-Anfragen
+DATA_DIR = BASE / "data"  # erzeugte Daten: Verlauf, Datei-Zuordnung, gesendete Batch-Anfragen
 CREDENTIALS_FILE = CONF_DIR / "credentials.json"
 TOKEN_FILE = CONF_DIR / "token.json"
 HISTORY = DATA_DIR / "batch_jobs.json"
-FILES_DB = DATA_DIR / "pdf_files.json"  # PDF-Hash -> Name der Datei in der Gemini Files API
-OPENAI_FILES_DB = DATA_DIR / "openai_files.json"  # PDF-Hash -> ID der Datei in der OpenAI Files API
+FILES_DB = DATA_DIR / "pdf_files.json"  # Datei-Hash -> Name der Datei in der Gemini Files API (Name aus der Zeit der PDFs)
+OPENAI_FILES_DB = DATA_DIR / "openai_files.json"  # Datei-Hash -> ID der Datei in der OpenAI Files API
 PROVIDER_GEMINI = "Gemini"
 PROVIDER_OPENAI = "OpenAI"
 PROVIDERS = [PROVIDER_GEMINI, PROVIDER_OPENAI]  # Auswahl in der Seitenleiste, Voreinstellung ist der erste
@@ -50,9 +50,9 @@ MODE_BG = "Hintergrund (Long Decode, läuft bei Google, Standardpreis)"
 THINK_LEVELS = ["Standard", "low", "medium", "high"]
 # OpenAI: reasoning.effort. Welche Stufen ein Modell kennt, hängt vom Modell ab, die API lehnt andere ab.
 OPENAI_EFFORTS = ["Standard", "none", "minimal", "low", "medium", "high", "xhigh", "max"]
-OPENAI_ENDPOINT = "/v1/responses"  # Endpunkt der OpenAI Batch API (nimmt Denktiefe und PDFs als Datei-ID entgegen)
+OPENAI_ENDPOINT = "/v1/responses"  # Endpunkt der OpenAI Batch API (nimmt Denktiefe und Dateien als Datei-ID entgegen)
 OPENAI_MAX_OUT = 128_000   # größte Ausgabe-Obergrenze der aktuellen Modelle, je Modell kann sie niedriger sein
-OPENAI_FILE_TTL = 3 * 24 * 3600  # hochgeladene PDFs verfallen bei OpenAI nach 3 Tagen (erlaubt: 1 Stunde bis 30 Tage)
+OPENAI_FILE_TTL = 3 * 24 * 3600  # hochgeladene Dateien verfallen bei OpenAI nach 3 Tagen (erlaubt: 1 Stunde bis 30 Tage)
 # Namen der Einträge: Ist das Feld „Name“ leer, erzeugt ein kleines, günstiges Gemini-Modell den Namen aus dem Prompt
 # (wie die Titel im Verlauf eines Chatbots). Modell und Denktiefe sind in der Seitenleiste änderbar.
 DEFAULT_NAME_MODEL = "gemini-3.5-flash-lite"  # das schnellste, günstigste Modell der Gemini-3.5-Familie
@@ -61,7 +61,7 @@ DEFAULT_NAME_THINK = "medium"
 NAME_MAX_OUT = 8192        # Denk- plus Ausgabe-Token des Aufrufs (der Name selbst braucht nur wenige)
 NAME_TIMEOUT_MS = 30_000   # Zeitlimit des Aufrufs: Die Namensvergabe soll den Start nicht lange aufhalten
 NAME_MAX_CHARS = 60        # längere Namen werden an einer Wortgrenze gekürzt (und enden dann auf …)
-NAME_SOURCE_CHARS = 1500   # so viel Prompt-Text geht insgesamt an das Modell (nie die PDFs oder die Systemanweisung)
+NAME_SOURCE_CHARS = 1500   # so viel Prompt-Text geht insgesamt an das Modell (nie die Dateien oder die Systemanweisung)
 NAME_SOURCE_PROMPTS = 3    # und nur aus den ersten Prompts
 NAME_INSTRUCTION = ("Du vergibst Namen für Einträge in einem Verlauf, ähnlich den Titeln im Verlauf eines Chatbots. "
                     "Die Nachricht enthält einen oder mehrere Prompts (mehrere trennt eine Zeile mit ---). "
