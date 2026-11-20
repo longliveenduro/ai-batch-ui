@@ -1,5 +1,6 @@
 """Ergebniszeilen: die gemeinsame Zeilenform aller Modi und Anbieter und die Parser für Gemini (parse_line für den
-Batch, parse_interaction für den Hintergrund-Modus). Der Parser für OpenAI (parse_openai_line) liefert dieselbe Form."""
+Batch, parse_interaction für den Hintergrund-Modus). Die Parser für OpenAI (parse_openai_line) und Claude
+(parse_claude_line) liefern dieselbe Form."""
 import json
 
 
@@ -34,10 +35,14 @@ def parse_line(o, prompts):
     }
 
 
-def parse_results(raw, prompts, parse=parse_line):
-    rows = [parse(json.loads(line), prompts) for line in raw.decode("utf-8").splitlines() if line.strip()]
+def sort_rows(rows):
+    """Zeilen nach der Nummer im Schlüssel ordnen (prompt-1, prompt-2, …). Ein Schlüssel ohne Nummer steht vorn."""
     num = lambda r: int(r["key"].rsplit("-", 1)[-1]) if r["key"].rsplit("-", 1)[-1].isdigit() else 0
     return sorted(rows, key=num)
+
+
+def parse_results(raw, prompts, parse=parse_line):
+    return sort_rows([parse(json.loads(line), prompts) for line in raw.decode("utf-8").splitlines() if line.strip()])
 
 
 def as_dict(obj):

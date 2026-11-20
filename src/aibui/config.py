@@ -30,15 +30,19 @@ TOKEN_FILE = CONF_DIR / "token.json"
 HISTORY = DATA_DIR / "batch_jobs.json"
 FILES_DB = DATA_DIR / "pdf_files.json"  # Datei-Hash -> Name der Datei in der Gemini Files API (Name aus der Zeit der PDFs)
 OPENAI_FILES_DB = DATA_DIR / "openai_files.json"  # Datei-Hash -> ID der Datei in der OpenAI Files API
+CLAUDE_FILES_DB = DATA_DIR / "claude_files.json"  # Datei-Hash -> ID der Datei in der Files API von Anthropic
 PROVIDER_GEMINI = "Gemini"
 PROVIDER_OPENAI = "OpenAI"
-PROVIDERS = [PROVIDER_GEMINI, PROVIDER_OPENAI]  # Auswahl in der Seitenleiste, Voreinstellung ist der erste
+PROVIDER_CLAUDE = "Claude"
+PROVIDERS = [PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDER_CLAUDE]  # Auswahl in der Seitenleiste, Vorgabe: der erste
 DEFAULT_MODEL = "gemini-4-carbon"
 DEFAULT_OPENAI_MODEL = "gpt-6-astra"
+DEFAULT_CLAUDE_MODEL = "claude-sonnet-5-5"  # laut Anthropic die beste Mischung aus Tempo und Intelligenz
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 POLL_SECONDS = 10  # Abstand der automatischen Prüfung im Tab „Jobs und Ergebnisse“
 DONE = {"JOB_STATE_SUCCEEDED", "JOB_STATE_FAILED", "JOB_STATE_CANCELLED", "JOB_STATE_EXPIRED",  # Gemini
-        "completed", "failed", "cancelled", "expired"}  # OpenAI (Status der Batch API, klein geschrieben)
+        "completed", "failed", "cancelled", "expired",  # OpenAI (Status der Batch API, klein geschrieben)
+        "ended"}  # Claude (processing_status der Message Batches API: Ergebnisse stehen erst, wenn der Batch endet)
 BATCH_MAX_OUT = 32768      # Batch läuft über generateContent (nicht streamend: 32.768 je Anfrage), kein Long Decode
 BG_MAX_OUT = 1_048_576     # Hintergrund (Interactions API, background=true): Long Decode bis zum gemeinsamen Fenster
 BG_DEFAULT_OUT = 262_144   # Voreinstellung im Hintergrund: Google empfiehlt für schwere Aufgaben 262.144 als Start
@@ -53,6 +57,12 @@ OPENAI_EFFORTS = ["Standard", "none", "minimal", "low", "medium", "high", "xhigh
 OPENAI_ENDPOINT = "/v1/responses"  # Endpunkt der OpenAI Batch API (nimmt Denktiefe und Dateien als Datei-ID entgegen)
 OPENAI_MAX_OUT = 128_000   # größte Ausgabe-Obergrenze der aktuellen Modelle, je Modell kann sie niedriger sein
 OPENAI_FILE_TTL = 3 * 24 * 3600  # hochgeladene Dateien verfallen bei OpenAI nach 3 Tagen (erlaubt: 1 Stunde bis 30 Tage)
+# Claude: output_config.effort. Welche Stufen ein Modell kennt, hängt vom Modell ab, die API lehnt andere ab.
+CLAUDE_EFFORTS = ["Standard", "low", "medium", "high", "xhigh", "max"]
+CLAUDE_MAX_OUT = 128_000   # größte max_tokens-Obergrenze der aktuellen Modelle, je Modell kann sie niedriger sein
+CLAUDE_FILE_TTL = 3 * 24 * 3600  # Dateien verfallen bei Anthropic nach 3 Tagen (erlaubt: 1 Stunde bis 90 Tage)
+CLAUDE_FILE_MIN_LEFT = 26 * 3600  # so lange muss eine gemerkte Datei noch leben (ein Batch läuft bis zu 24 Stunden)
+CLAUDE_CACHE_TTL = "1h"    # Lebensdauer der Cache-Marke: Ein Batch braucht oft länger als die 5 Minuten der Vorgabe
 # Namen der Einträge: Ist das Feld „Name“ leer, erzeugt ein kleines, günstiges Gemini-Modell den Namen aus dem Prompt
 # (wie die Titel im Verlauf eines Chatbots). Modell und Denktiefe sind in der Seitenleiste änderbar.
 DEFAULT_NAME_MODEL = "gemini-3.5-flash-lite"  # das schnellste, günstigste Modell der Gemini-3.5-Familie
@@ -71,8 +81,8 @@ NAME_INSTRUCTION = ("Du vergibst Namen für Einträge in einem Verlauf, ähnlich
 # Formularfelder mit Schlüssel. Streamlit vergisst den Wert eines Widgets, das einen Lauf lang fehlt (Felder des anderen
 # Anbieters, alles hinter st.stop()), und der Browser baut es dann mit dem Standardwert neu auf. Darum wird jeder Wert
 # vor dem Zeichnen neu zugewiesen: Das hält ihn am Leben und schickt ihn an den Browser.
-FORM_KEYS = ["model_gemini", "model_openai", "mode", "system", "raw", "think", "effort", "max_batch", "max_bg",
-             "max_openai", "auto_name", "name_model", "name_think"]
+FORM_KEYS = ["model_gemini", "model_openai", "model_claude", "mode", "system", "raw", "think", "effort", "effort_claude",
+             "max_batch", "max_bg", "max_openai", "max_claude", "cache_claude", "auto_name", "name_model", "name_think"]
 HINT = " (bitte den Tab nicht wechseln)"
 SEPARATOR = re.compile(r"^\s*---\s*$", re.M)  # eine Zeile nur mit --- trennt im Formular die Prompts
 # Gesprächsverlauf als Text („Gespräch fortsetzen“): Je Runde steht mein früherer Prompt und deine Antwort dazu.

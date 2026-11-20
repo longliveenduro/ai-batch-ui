@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from helpers import PROVIDER_GEMINI, PROVIDER_OPENAI
+from helpers import PROVIDER_CLAUDE, PROVIDER_GEMINI, PROVIDER_OPENAI
 
 
 # ---------- Typ einer Datei ----------
@@ -87,10 +87,11 @@ def test_the_mime_types_are_ones_the_sdk_of_the_interactions_api_knows(app):
 
 
 # ---------- Arten je Anbieter ----------
-def test_both_providers_take_documents_and_images_but_only_gemini_takes_audio_and_video(app):
-    assert set(app.PROVIDER_KINDS) == {PROVIDER_GEMINI, PROVIDER_OPENAI} == set(app.PROVIDERS)
+def test_all_providers_take_documents_and_images_but_only_gemini_takes_audio_and_video(app):
+    assert set(app.PROVIDER_KINDS) == {PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDER_CLAUDE} == set(app.PROVIDERS)
     assert set(app.PROVIDER_KINDS[PROVIDER_GEMINI]) == {"document", "image", "audio", "video"}
     assert set(app.PROVIDER_KINDS[PROVIDER_OPENAI]) == {"document", "image"}
+    assert set(app.PROVIDER_KINDS[PROVIDER_CLAUDE]) == {"document", "image"}
 
 
 def test_check_files_accepts_everything_the_provider_knows(app):
@@ -106,11 +107,49 @@ def test_check_files_reports_audio_and_video_for_openai_and_names_who_takes_them
         "„film.MP4“: Video nimmt OpenAI nicht an, nur Gemini."]
 
 
-@pytest.mark.parametrize("provider", [PROVIDER_GEMINI, PROVIDER_OPENAI])
+@pytest.mark.parametrize("provider", [PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDER_CLAUDE])
 def test_check_files_reports_unknown_types_for_every_provider_in_the_order_of_the_files(app, provider):
     problems = app.check_files(provider, ["a.pdf", "b.zip", "c.png", "LIESMICH"])
     assert problems == ["„b.zip“: Der Dateityp .zip wird nicht unterstützt.",
                         "„LIESMICH“: Ohne Endung lässt sich der Dateityp nicht erkennen."]
+
+
+# ---------- Claude: nur PDF, Text und Bilder ----------
+def test_check_files_accepts_pdf_text_csv_and_images_for_claude(app):
+    assert app.check_files(PROVIDER_CLAUDE, ["a.pdf", "b.TXT", "c.md", "d.csv", "e.json", "f.PNG", "g.jpg", "h.webp"]) == []
+    assert app.check_files(PROVIDER_CLAUDE, []) == []
+
+
+def test_check_files_rejects_office_files_for_claude_with_a_hint_to_export_them(app):
+    names = ["bericht.docx", "alt.DOC", "text.odt", "folien.pptx", "alt.ppt", "zahlen.xlsx", "alt.xls"]
+    problems = app.check_files(PROVIDER_CLAUDE, names)
+    assert len(problems) == 7 and all("nimmt Claude nicht an" in p and "PDF" in p for p in problems)
+    assert problems[0] == ("„bericht.docx“: .docx-Dateien nimmt Claude nicht an, nur PDF, Text (auch CSV) und Bilder. "
+                           "Exportiere sie als PDF (Tabellen als CSV).")
+    assert problems[1].startswith("„alt.DOC“: .doc-Dateien")  # Groß- und Kleinschreibung egal, Endung klein genannt
+
+
+def test_the_same_office_files_stay_fine_for_gemini_and_openai(app):
+    names = ["bericht.docx", "alt.doc", "text.odt", "folien.pptx", "alt.ppt", "zahlen.xlsx", "alt.xls"]
+    assert app.check_files(PROVIDER_GEMINI, names) == [] and app.check_files(PROVIDER_OPENAI, names) == []
+
+
+def test_check_files_reports_audio_and_video_for_claude_and_names_who_takes_them(app):
+    assert app.check_files(PROVIDER_CLAUDE, ["ton.mp3", "film.MP4"]) == [
+        "„ton.mp3“: Audio nimmt Claude nicht an, nur Gemini.",
+        "„film.MP4“: Video nimmt Claude nicht an, nur Gemini."]
+
+
+def test_check_files_for_claude_keeps_the_order_of_all_kinds_of_problems(app):
+    assert [p.split("“")[0] for p in app.check_files(
+        PROVIDER_CLAUDE, ["a.pdf", "b.xlsx", "c.zip", "d.mp3", "e.png"])] == ["„b.xlsx", "„c.zip", "„d.mp3"]
+
+
+def test_excluded_extensions_are_documents_the_app_knows_otherwise(app):
+    assert app.PROVIDER_EXCLUDED == {PROVIDER_CLAUDE: app.OFFICE_EXTENSIONS}
+    assert all(app.file_info("x" + ext)[0] == "document" for ext in app.OFFICE_EXTENSIONS)
+    assert app.excluded_problem(PROVIDER_CLAUDE, "x.pdf") is None
+    assert app.excluded_problem(PROVIDER_OPENAI, "x.docx") is None
 
 
 # ---------- Hilfetext ----------
@@ -118,8 +157,14 @@ def test_the_overview_lists_every_extension_and_names_the_provider_of_limited_ki
     text = app.types_overview()
     assert all(ext in text for ext in app.FILE_TYPES)
     assert "Audio (nur Gemini): .mp3" in text and "Video (nur Gemini): .mp4" in text
-    assert "Dokumente: .pdf" in text and "Bilder: .png" in text  # beide Anbieter: ohne Zusatz
+    assert "Dokumente: .pdf" in text and "Bilder: .png" in text  # alle Anbieter: ohne Zusatz
     assert text.index("Dokumente") < text.index("Bilder") < text.index("Audio") < text.index("Video")
+
+
+def test_the_overview_ends_with_the_extensions_claude_does_not_take(app):
+    text = app.types_overview()
+    assert text.endswith("Nicht bei Claude: .docx, .doc, .odt, .pptx, .ppt, .xlsx, .xls")
+    assert text.index("Video") < text.index("Nicht bei Claude")
 
 
 # ---------- Art und MIME-Typ einer hochgeladenen Datei ----------

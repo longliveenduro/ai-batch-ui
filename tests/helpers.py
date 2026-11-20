@@ -12,7 +12,7 @@ PACKAGE_DIR = SRC_DIR / PACKAGE
 SOURCE_FILES = [APP_PATH, *sorted(PACKAGE_DIR.glob("*.py"))]  # aller Quelltext der App
 
 # Texte der Oberfläche, auf die sich Tests stützen. test_logic prüft, dass sie mit der App übereinstimmen.
-PROVIDER_GEMINI, PROVIDER_OPENAI = "Gemini", "OpenAI"
+PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDER_CLAUDE = "Gemini", "OpenAI", "Claude"
 MODE_BATCH = "Batch (50 % Rabatt, Ergebnis nach Minuten bis Stunden)"
 MODE_BG = "Hintergrund (Long Decode, läuft bei Google, Standardpreis)"
 TAB_NEW, TAB_JOBS = "Neue Anfrage", "Jobs und Ergebnisse"
@@ -71,6 +71,20 @@ def finished_openai_batch(**over):
                         api_model="gpt-6-astra-2026-09-01", **over)
 
 
+def claude_entry(**over):
+    """Frisch gestarteter Claude-Batch (noch ohne Endzustand)."""
+    e = batch_entry(name="msgbatch_01abc123def456", provider=PROVIDER_CLAUDE, label="claude-batch",
+                    model="claude-sonnet-5-5")
+    e.update(over)
+    return e
+
+
+def finished_claude_batch(**over):
+    """Claude-Batch mit lokal gesichertem Endergebnis."""
+    return claude_entry(state="ended", rows=[row(model="claude-sonnet-5-5")], error=None,
+                        api_model="claude-sonnet-5-5", **over)
+
+
 def sync_entry(**over):
     """Älterer synchroner Eintrag. Den Modus gibt es nicht mehr, der Eintrag bleibt aber lesbar."""
     e = {"name": "sync-20261002-120000-bbbb", "mode": "sync", "state": "DONE", "label": "paar-lauf",
@@ -113,6 +127,14 @@ def new_openai_app(tab=None, auto_name=False):
     Namensvergabe (sie nutzt immer Gemini) ist aus, außer ein Test schaltet sie mit auto_name=True ein."""
     at = new_app(tab)
     at.session_state["provider"] = PROVIDER_OPENAI
+    at.session_state["auto_name"] = auto_name
+    return at
+
+
+def new_claude_app(tab=None, auto_name=False):
+    """Wie new_openai_app(), aber mit Claude als Anbieter für neue Anfragen."""
+    at = new_app(tab)
+    at.session_state["provider"] = PROVIDER_CLAUDE
     at.session_state["auto_name"] = auto_name
     return at
 

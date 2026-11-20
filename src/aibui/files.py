@@ -7,13 +7,14 @@ Anfrage steht. Textdateien (TEXT_EXTENSIONS) sind Dokumente mit dem MIME-Typ tex
 """
 from pathlib import PurePath
 
-from .config import PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDERS
+from .config import PROVIDER_CLAUDE, PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDERS
 
 PDF_MIME = "application/pdf"
 TEXT_EXTENSIONS = (".txt", ".text", ".md", ".markdown", ".rst", ".log", ".json", ".html", ".htm", ".xml", ".css", ".js",
                    ".py", ".sql", ".c", ".cpp", ".h", ".tsv", ".srt", ".vtt")
-# Endung -> (Art, MIME-Typ). Die Dokumente und Bilder nehmen beide Anbieter an, Audio und Video nur Gemini
-# (siehe PROVIDER_KINDS). Die MIME-Typen sind die, die Googles Files API und das SDK der Interactions API nennen.
+# Endung -> (Art, MIME-Typ). Die Dokumente und Bilder nehmen alle Anbieter an (Claude ohne Word, PowerPoint und Excel,
+# siehe PROVIDER_EXCLUDED), Audio und Video nur Gemini (siehe PROVIDER_KINDS). Die MIME-Typen sind die, die Googles Files
+# API und das SDK der Interactions API nennen.
 FILE_TYPES = {
     ".pdf": ("document", PDF_MIME),
     ".docx": ("document", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
@@ -46,11 +47,18 @@ FILE_TYPES = {
     ".3gp": ("video", "video/3gpp"),
 }
 # Welche Arten ein Anbieter annimmt. OpenAI nennt in der Doku zu Dateieingaben (Responses API) Dokumente, Text und Tabellen
-# als input_file, Bilder gehen als input_image. Audio und Video kennt es dort nicht.
+# als input_file, Bilder gehen als input_image. Audio und Video kennt es dort nicht. Claude liest Dokumente als
+# document-Block und Bilder als image-Block, Audio und Video kennt es nicht.
 PROVIDER_KINDS = {
     PROVIDER_GEMINI: ("document", "image", "audio", "video"),
     PROVIDER_OPENAI: ("document", "image"),
+    PROVIDER_CLAUDE: ("document", "image"),
 }
+# Endungen, die ein Anbieter nicht annimmt, obwohl er die Art kennt. Als document-Block liest Claude nur PDF und Text
+# (auch CSV, das als text/plain hochgeht). Für Word, PowerPoint, Excel und OpenDocument-Text nennt Anthropic den Umweg
+# über PDF oder Text.
+OFFICE_EXTENSIONS = (".docx", ".doc", ".odt", ".pptx", ".ppt", ".xlsx", ".xls")
+PROVIDER_EXCLUDED = {PROVIDER_CLAUDE: OFFICE_EXTENSIONS}
 KIND_LABELS = {"document": "Dokumente", "image": "Bilder", "audio": "Audio", "video": "Video"}
 
 
@@ -63,6 +71,15 @@ def file_info(name):
     if not ext:
         raise ValueError(f"„{name}“: Ohne Endung lässt sich der Dateityp nicht erkennen.")
     raise ValueError(f"„{name}“: Der Dateityp {ext} wird nicht unterstützt.")
+
+
+def excluded_problem(provider, name):
+    """Meldung, wenn der Anbieter Dateien mit dieser Endung nicht annimmt (PROVIDER_EXCLUDED), sonst None."""
+    ext = PurePath(name).suffix.lower()
+    if ext in PROVIDER_EXCLUDED.get(provider, ()):
+        return (f"„{name}“: {ext}-Dateien nimmt {provider} nicht an, nur PDF, Text (auch CSV) und Bilder. "
+                "Exportiere sie als PDF (Tabellen als CSV).")
+    return None
 
 
 def check_files(provider, names):
@@ -78,18 +95,22 @@ def check_files(provider, names):
         if kind not in PROVIDER_KINDS[provider]:
             accepted = ", ".join(p for p in PROVIDERS if kind in PROVIDER_KINDS[p])
             problems.append(f"„{name}“: {KIND_LABELS[kind]} nimmt {provider} nicht an, nur {accepted}.")
+        elif problem := excluded_problem(provider, name):
+            problems.append(problem)
     return problems
 
 
 def types_overview():
     """Alle Endungen nach Art, als Text für die Hilfe am Datei-Feld. Eine Art, die nicht jeder Anbieter annimmt, nennt
-    die Anbieter, die sie annehmen."""
+    die Anbieter, die sie annehmen. Am Ende stehen die Endungen, die einzelne Anbieter ablehnen."""
     parts = []
     for kind, label in KIND_LABELS.items():
         extensions = ", ".join(ext for ext, (k, _) in FILE_TYPES.items() if k == kind)
         accepted = [p for p in PROVIDERS if kind in PROVIDER_KINDS[p]]
         only = "" if len(accepted) == len(PROVIDERS) else f" (nur {', '.join(accepted)})"
         parts.append(f"{label}{only}: {extensions}")
+    for provider, extensions in PROVIDER_EXCLUDED.items():
+        parts.append(f"Nicht bei {provider}: {', '.join(extensions)}")
     return "\n\n".join(parts)
 
 

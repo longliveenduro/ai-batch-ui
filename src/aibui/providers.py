@@ -1,24 +1,29 @@
-"""Anbieter (Gemini, OpenAI): Client bauen, Anbieter und Betriebsart eines Eintrags, Status holen und sichern, Batch
-abbrechen. Hier kommt ein weiterer Anbieter dazu (siehe README, Abschnitt 9.2)."""
+"""Anbieter (Gemini, OpenAI, Claude): Client bauen, Anbieter und Betriebsart eines Eintrags, Status holen und sichern,
+Batch abbrechen. Hier kommt ein weiterer Anbieter dazu (siehe README, Abschnitt 9.2)."""
 import streamlit as st
 from google import genai
 
 from .background import cancel_background, fetch_background
-from .config import DONE, PROVIDER_GEMINI, PROVIDER_OPENAI
+from .claude_batch import claude_client, fetch_claude_batch
+from .config import DONE, PROVIDER_CLAUDE, PROVIDER_GEMINI, PROVIDER_OPENAI
 from .history import mutate_jobs, runtime
 from .openai_batch import fetch_openai_batch, openai_client
 from .rows import parse_results
 
 
 def make_client(provider, api_key):
-    return openai_client(api_key) if provider == PROVIDER_OPENAI else genai.Client(api_key=api_key)
+    if provider == PROVIDER_OPENAI:
+        return openai_client(api_key)
+    if provider == PROVIDER_CLAUDE:
+        return claude_client(api_key)
+    return genai.Client(api_key=api_key)
 
 
 def entry_provider(j):
     """Anbieter eines Eintrags. Das Feld provider ist Pflicht: Neue Einträge schreiben es immer. Einträge von vor
     Issue #8 haben es nicht (sie stammen alle von Gemini) und werden nicht nachträglich ergänzt. Fehlt es oder ist der
     Wert unbekannt, gilt der Eintrag als Gemini-Eintrag."""
-    return PROVIDER_OPENAI if j.get("provider") == PROVIDER_OPENAI else PROVIDER_GEMINI
+    return j["provider"] if j.get("provider") in (PROVIDER_OPENAI, PROVIDER_CLAUDE) else PROVIDER_GEMINI
 
 
 def entry_mode(j):
@@ -33,6 +38,8 @@ def refresh(client, j):
         state, rows, err, api_model = fetch_background(client, j, known)
     elif entry_provider(j) == PROVIDER_OPENAI:
         state, rows, err, api_model = fetch_openai_batch(client, j)
+    elif entry_provider(j) == PROVIDER_CLAUDE:
+        state, rows, err, api_model = fetch_claude_batch(client, j)
     else:
         job = client.batches.get(name=j["name"])
         state, rows = job.state.name, None
@@ -61,5 +68,7 @@ def cancel_batch(client, j):
         cancel_background(client, j)
     elif entry_provider(j) == PROVIDER_OPENAI:
         client.batches.cancel(j["name"])
+    elif entry_provider(j) == PROVIDER_CLAUDE:
+        client.messages.batches.cancel(j["name"])
     else:
         client.batches.cancel(name=j["name"])

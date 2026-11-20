@@ -3,8 +3,8 @@ fortsetzen, Name und Beschreibung ändern, Eintrag löschen). Callbacks setzen W
 erzeugt wird."""
 import streamlit as st
 
-from .config import (BATCH_MAX_OUT, BG_MAX_OUT, MODE_BATCH, MODE_BG, OPENAI_EFFORTS, OPENAI_MAX_OUT, PROVIDER_OPENAI,
-                     TABS, TALK_NEW, THINK_LEVELS)
+from .config import (BATCH_MAX_OUT, BG_MAX_OUT, CLAUDE_EFFORTS, CLAUDE_MAX_OUT, MODE_BATCH, MODE_BG, OPENAI_EFFORTS,
+                     OPENAI_MAX_OUT, PROVIDER_CLAUDE, PROVIDER_OPENAI, TABS, TALK_NEW, THINK_LEVELS)
 from .history import mutate_jobs, runtime
 from .naming import generate_name, matches
 from .providers import entry_mode, entry_provider
@@ -24,7 +24,7 @@ def fill_form(j, raw, text):
     background = mode in ("background", "sync")
     ss["provider"] = prov
     if j.get("model"):
-        ss["model_openai" if prov == PROVIDER_OPENAI else "model_gemini"] = j["model"]
+        ss[{PROVIDER_OPENAI: "model_openai", PROVIDER_CLAUDE: "model_claude"}.get(prov, "model_gemini")] = j["model"]
     ss["mode"] = MODE_BG if background else MODE_BATCH
     ss["raw"] = raw
     ss["system"] = j.get("system", "")
@@ -33,6 +33,12 @@ def fill_form(j, raw, text):
             ss["effort"] = j["think"]
         if j.get("max_out"):
             ss["max_openai"] = max(256, min(int(j["max_out"]), OPENAI_MAX_OUT))
+    elif prov == PROVIDER_CLAUDE:
+        if j.get("think") in CLAUDE_EFFORTS:
+            ss["effort_claude"] = j["think"]
+        if j.get("max_out"):
+            ss["max_claude"] = max(256, min(int(j["max_out"]), CLAUDE_MAX_OUT))
+        ss["cache_claude"] = bool(j.get("cache"))
     else:
         if j.get("think") in THINK_LEVELS:
             ss["think"] = j["think"]
