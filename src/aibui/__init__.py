@@ -12,6 +12,7 @@ Ein Modul importiert nur Module, die in dieser Liste über ihm stehen. So bleibt
     openai_batch   OpenAI: Dateien hochladen, Batch starten, Ergebnisse lesen
     claude_batch   Claude: Dateien hochladen, Batch starten, Ergebnisse lesen
     providers      Anbieter: Client, Betriebsart eines Eintrags, Status holen und sichern, abbrechen
+    pricing        Preise: Preistabelle je Anbieter und Modell, Kosten des gewählten Modells für die Infobox
     talk           Gesprächsverlauf als Text
     naming         Namen der Einträge: aus dem Prompt erzeugen, Standardname, Suche im Verlauf
     forms          Formular „Neue Anfrage“ und Verlaufseinträge (Callbacks)
