@@ -1,15 +1,21 @@
-"""Ersatz für die Google- und OpenAI-Dienste. Nichts hier ruft das Netzwerk auf.
+"""Ersatz für die Google-, OpenAI- und Anthropic-Dienste. Nichts hier ruft das Netzwerk auf.
 
-Die Antworten sind echte SDK-Objekte (interactions.Interaction, openai.types.Batch), damit der Code im Test
-dieselben Datenformen sieht wie in der Praxis. Aufrufe werden aufgezeichnet, damit Tests prüfen können, was die App
-gesendet hat.
+Die Antworten sind echte SDK-Objekte (interactions.Interaction, openai.types.Batch, anthropic MessageBatch), damit der
+Code im Test dieselben Datenformen sieht wie in der Praxis. Aufrufe werden aufgezeichnet, damit Tests prüfen können, was
+die App gesendet hat.
 """
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
+import anthropic
+from anthropic.types import FileMetadata
+from anthropic.types.messages import MessageBatch, MessageBatchIndividualResponse
 from google.genai import interactions, types
 from openai.types import Batch, FileObject
+
+REAL_ANTHROPIC = anthropic.Anthropic  # die echte Klasse, bevor conftest sie durch einen Wächter ersetzt
 
 
 class ApiError(Exception):
@@ -447,3 +453,214 @@ def install_openai(monkeypatch, fake):
 
     monkeypatch.setattr(openai, "OpenAI", build_client)
     return fake
+
+
+# ---------- Claude (Files API und Message Batches API) ----------
+class ClaudeError(Exception):
+    """Ähnelt anthropic.APIStatusError: trägt den HTTP-Code im Attribut status_code."""
+
+    def __init__(self, status_code, message="Fehler"):
+        super().__init__(f"{status_code} {message}")
+        self.status_code = status_code
+
+
+def make_claude_message(text="Antwort", *, stop_reason="end_turn", input_tokens=100, cache_read=0, cache_creation=0,
+                        thinking=10, output=25, model="claude-sonnet-5-5", refusal=None):
+    """Antwort (Message) einer Anfrage im Claude-Batch, wie sie in den Ergebnissen steckt. output zählt wie bei Claude die
+    Denk-Token mit, thinking sagt, wie viele davon. input_tokens zählt wie dort nur die Token ohne Cache. refusal
+    ({"category": …, "explanation": …}) macht daraus eine abgelehnte Antwort. Gültig nach dem Schema des SDK
+    (anthropic.types.Message), das prüft ein Test."""
+    content = [{"type": "thinking", "thinking": "Überlegung", "signature": "sig-fake"}]
+    if refusal is not None:
+        stop_reason, text = "refusal", ""
+    if text:
+        content.append({"type": "text", "text": text})
+    return {
+        "id": "msg_fake", "type": "message", "role": "assistant", "model": model, "content": content,
+        "stop_reason": stop_reason, "stop_sequence": None,
+        "stop_details": {"type": "refusal", **refusal} if refusal is not None else None,
+        "usage": {"input_tokens": input_tokens, "cache_creation_input_tokens": cache_creation,
+                  "cache_read_input_tokens": cache_read, "output_tokens": output,
+                  "output_tokens_details": {"thinking_tokens": thinking}, "service_tier": "batch"},
+    }
+
+
+def claude_errored(error_type="invalid_request_error", message="Ungültige Anfrage", request_id="req_fake"):
+    """Ergebnis einer fehlgeschlagenen Anfrage im Claude-Batch (result.type errored)."""
+    return {"type": "errored", "error": {"type": "error", "error": {"type": error_type, "message": message},
+                                         "request_id": request_id}}
+
+
+class _ClaudeFiles:
+    def __init__(self, parent):
+        self.p = parent
+
+    def upload(self, *, file, expires_in_seconds=None):
+        p = self.p
+        if p.upload_error:
+            raise p.upload_error
+        filename, content, mime = file  # Datei: (Name, Inhalt, MIME-Typ)
+        data = content.read() if hasattr(content, "read") else content
+        p.uploads.append(data)
+        p.upload_names.append(filename)
+        p.upload_mimes.append(mime)
+        p.file_calls.append({"expires_in_seconds": expires_in_seconds})
+        created = datetime.now(timezone.utc)
+        obj = FileMetadata.model_validate({
+            "id": f"file_fake{len(p.uploads):06d}", "type": "file", "filename": filename, "mime_type": mime,
+            "size_bytes": len(data), "created_at": created.isoformat(), "downloadable": False,
+            "expires_at": (created + timedelta(seconds=expires_in_seconds)).isoformat() if expires_in_seconds else None,
+        })
+        p.stored[obj.id] = obj
+        return obj
+
+    def retrieve_metadata(self, file_id):
+        p = self.p
+        p.metadata_calls.append(file_id)
+        if file_id in p.gone or file_id not in p.stored:
+            raise ClaudeError(404, "File not found")
+        obj = p.stored[file_id]
+        return obj.model_copy(update={"expires_at": p.expiry[file_id]}) if file_id in p.expiry else obj
+
+
+class _ClaudeBatches:
+    def __init__(self, parent):
+        self.p = parent
+
+    def create(self, *, requests):
+        p = self.p
+        if p.create_error:
+            raise p.create_error
+        p.batch_requests = list(requests)
+        p.created_batches.append({"count": len(p.batch_requests)})
+        return self.batch(f"msgbatch_fake{len(p.created_batches):06d}", "in_progress")
+
+    def retrieve(self, batch_id):
+        self.p.get_calls += 1
+        if self.p.get_error:
+            raise self.p.get_error
+        return self.batch(batch_id, self.p.batch_status)
+
+    def results(self, batch_id):
+        p = self.p
+        p.results_calls.append(batch_id)
+        if p.results_error:
+            raise p.results_error
+        return iter(p.result_objects())
+
+    def cancel(self, batch_id):
+        self.p.cancelled.append(batch_id)
+        return self.batch(batch_id, "canceling")
+
+    def batch(self, batch_id, status):
+        p = self.p
+        ended = status == "ended"
+        keys = [r["custom_id"] for r in p.batch_requests]
+        kinds = [p.failing[k]["type"] for k in keys if k in p.failing]
+        counts = {"processing": 0 if ended else len(keys), "succeeded": len(keys) - len(kinds) if ended else 0,
+                  "errored": kinds.count("errored") if ended else 0, "canceled": kinds.count("canceled") if ended else 0,
+                  "expired": kinds.count("expired") if ended else 0}
+        return MessageBatch.model_validate({
+            "id": batch_id, "type": "message_batch", "processing_status": status, "request_counts": counts,
+            "created_at": "2026-11-18T10:00:00Z", "expires_at": "2026-11-19T10:00:00Z",
+            "ended_at": "2026-11-18T10:30:00Z" if ended else None, "cancel_initiated_at": None,
+            "results_url": f"https://api.anthropic.com/v1/messages/batches/{batch_id}/results" if ended else None,
+        })
+
+
+class FakeClaude:
+    """Ersatz für anthropic.Anthropic (Files API und Message Batches API).
+
+    batch_status: processing_status, den messages.batches.retrieve meldet (in_progress, canceling, ended).
+    get_error, create_error, upload_error, results_error: Fehler von messages.batches.retrieve, messages.batches.create,
+            files.upload bzw. messages.batches.results.
+    batch_text, batch_cached: Antworttext und aus dem Cache gelesene Eingabe-Token in den Ergebnissen.
+    failing: {Schlüssel: Ergebnis} der Anfragen ohne Antwort, z. B. claude_errored() oder {"type": "expired"}.
+    answers: {Schlüssel: Argumente für make_claude_message} für einzelne Antworten (z. B. abgeschnittene).
+    gone, expiry: IDs hochgeladener Dateien, die bei Anthropic fehlen (404), und abweichende Ablaufzeiten
+            ({ID: datetime}).
+    uploads, upload_names, upload_mimes: Inhalt, Name und MIME-Typ jeder hochgeladenen Datei.
+    batch_requests: die Anfragen des zuletzt angelegten Batches ([{"custom_id": …, "params": …}]).
+    """
+
+    def __init__(self, *, batch_status="ended", get_error=None, create_error=None, upload_error=None,
+                 results_error=None, batch_text=None, batch_cached=0, failing=None, answers=None):
+        self.batch_status = batch_status
+        self.get_error, self.create_error = get_error, create_error
+        self.upload_error, self.results_error = upload_error, results_error
+        self.batch_text, self.batch_cached = batch_text, batch_cached
+        self.failing, self.answers = dict(failing or {}), dict(answers or {})
+        self.client_kwargs = []  # Argumente der Client-Erzeugung (z. B. api_key)
+        self.uploads, self.upload_names, self.upload_mimes, self.stored = [], [], [], {}
+        self.batch_requests, self.file_calls, self.metadata_calls = [], [], []
+        self.created_batches, self.cancelled, self.results_calls = [], [], []
+        self.gone, self.expiry = set(), {}
+        self.get_calls = 0
+        self.files = _ClaudeFiles(self)
+        self.messages = SimpleNamespace(batches=_ClaudeBatches(self))  # client.messages.batches.create(…) usw.
+
+    def result_objects(self):
+        out = []
+        for req in self.batch_requests:
+            key = req["custom_id"]
+            if key in self.failing:
+                result = self.failing[key]
+            else:
+                args = {"text": self.batch_text or f"Claude-Antwort {key}", "cache_read": self.batch_cached,
+                        **self.answers.get(key, {})}
+                result = {"type": "succeeded", "message": make_claude_message(**args)}
+            out.append(MessageBatchIndividualResponse.model_validate({"custom_id": key, "result": result}))
+        return out
+
+
+def install_claude(monkeypatch, fake):
+    """Lässt anthropic.Anthropic immer den Fake liefern."""
+
+    def build_client(*args, **kwargs):
+        fake.client_kwargs.append(kwargs)
+        return fake
+
+    monkeypatch.setattr(anthropic, "Anthropic", build_client)
+    return fake
+
+
+def _http():
+    """Die HTTP-Bibliothek des SDK: ab der Hauptversion 2 httpx2, ältere Fassungen nutzen httpx."""
+    try:
+        import httpx2 as httpx
+    except ImportError:
+        import httpx
+    return httpx
+
+
+def real_claude_client(handler):
+    """Echter anthropic-Client (also der echte SDK-Code), dessen HTTP-Anfragen an handler(request) gehen statt ins Netz.
+    handler liefert die Antwort, zum Beispiel mit json_response() oder jsonl_response()."""
+    httpx = _http()
+    return REAL_ANTHROPIC(api_key="test-claude-key", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+
+def json_response(data, status=200):
+    return _http().Response(status, json=data)
+
+
+def jsonl_response(lines):
+    """Antwort der Ergebnis-Abfrage eines Batches: eine JSON-Zeile je Ergebnis."""
+    body = "\n".join(json.dumps(line, ensure_ascii=False) for line in lines).encode("utf-8")
+    return _http().Response(200, content=body, headers={"content-type": "application/x-jsonl"})
+
+
+def batch_json(batch_id="msgbatch_x", status="in_progress", **counts):
+    """Ein Batch, wie ihn die Message Batches API als JSON liefert."""
+    ended = status == "ended"
+    return {"id": batch_id, "type": "message_batch", "processing_status": status,
+            "request_counts": {"processing": 0, "succeeded": 0, "errored": 0, "canceled": 0, "expired": 0, **counts},
+            "created_at": "2026-11-18T10:00:00Z", "expires_at": "2026-11-19T10:00:00Z",
+            "ended_at": "2026-11-18T10:30:00Z" if ended else None, "cancel_initiated_at": None,
+            "results_url": f"https://api.anthropic.com/v1/messages/batches/{batch_id}/results" if ended else None}
+
+
+def file_json(file_id="file_abc", name="Buch.pdf", mime="application/pdf", expires="2099-01-01T00:00:00Z"):
+    """Metadaten einer Datei, wie sie die Files API als JSON liefert."""
+    return {"id": file_id, "type": "file", "filename": name, "mime_type": mime, "size_bytes": 3,
+            "created_at": "2026-11-18T10:00:00Z", "downloadable": False, "expires_at": expires}

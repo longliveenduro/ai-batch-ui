@@ -1,13 +1,14 @@
-"""AI Batch UI: lokale Oberfläche für Batch-Läufe mit Gemini 4 Carbon und OpenAI (Streamlit).
+"""AI Batch UI: lokale Oberfläche für Batch-Läufe mit Gemini 4 Carbon, OpenAI und Claude (Streamlit).
 
 Start:    pip install -r requirements.txt && streamlit run src/ai_batch_ui.py   (im Projektordner)
-API-Key:  Umgebungsvariablen GEMINI_API_KEY und OPENAI_API_KEY oder Seitenleiste.
-Anbieter: Gemini (Batch und Hintergrund) oder OpenAI (nur Batch, Responses-Endpunkt), gewählt in der Seitenleiste.
+API-Key:  Umgebungsvariablen GEMINI_API_KEY, OPENAI_API_KEY und ANTHROPIC_API_KEY oder Seitenleiste.
+Anbieter: Gemini (Batch und Hintergrund), OpenAI (nur Batch, Responses-Endpunkt) oder Claude (nur Batch, Message
+          Batches API), gewählt in der Seitenleiste.
 Modi:     Batch (asynchron, 50 % Rabatt) oder Hintergrund (nur Gemini: Interactions API mit background=true, Long Decode
           bis 1.048.576 Ausgabe-Token, läuft bei Google und braucht die App nicht, Standardpreis).
 Ordner:   conf/ (Zugangsdaten, geheim: credentials.json, token.json) und data/ (batch_jobs.json = Verlauf und
-          Ergebnisse, pdf_files.json und openai_files.json = hochgeladene Dateien, requests_*.jsonl = gesendete
-          Batch-Anfragen).
+          Ergebnisse, pdf_files.json, openai_files.json und claude_files.json = hochgeladene Dateien,
+          requests_*.jsonl = gesendete Batch-Anfragen).
           Beide liegen im Projektordner neben src/ (dem Ordner dieser Datei), oder unter dem Ordner aus der
           Umgebungsvariable AI_BATCH_UI_HOME.
 Drive:    (optional) In der Google Cloud Console die Drive API aktivieren, eine OAuth-Client-ID
@@ -26,11 +27,13 @@ from datetime import datetime
 import streamlit as st
 
 from aibui.background import start_background
-from aibui.config import (BATCH_MAX_OUT, BG_DEFAULT_OUT, BG_MAX_OUT, DEFAULT_MODEL, DEFAULT_NAME_MODEL,
-                          DEFAULT_NAME_THINK, DEFAULT_OPENAI_MODEL, DONE, FORM_KEYS, HINT, MAX_POLL_ERRORS, MODE_BATCH,
-                          MODE_BG, NAME_SOURCE_CHARS, NAME_THINK_LEVELS, OPENAI_EFFORTS, OPENAI_MAX_OUT, POLL_SECONDS,
-                          PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDERS, SEPARATOR, TABS, TALK_NEW, THINK_LEVELS,
-                          prepare_folders)
+from aibui.claude_batch import start_claude_batch, upload_file_claude
+from aibui.config import (BATCH_MAX_OUT, BG_DEFAULT_OUT, BG_MAX_OUT, CLAUDE_EFFORTS, CLAUDE_MAX_OUT,
+                          DEFAULT_CLAUDE_MODEL, DEFAULT_MODEL, DEFAULT_NAME_MODEL, DEFAULT_NAME_THINK,
+                          DEFAULT_OPENAI_MODEL, DONE, FORM_KEYS, HINT, MAX_POLL_ERRORS, MODE_BATCH, MODE_BG,
+                          NAME_SOURCE_CHARS, NAME_THINK_LEVELS, OPENAI_EFFORTS, OPENAI_MAX_OUT, POLL_SECONDS,
+                          PROVIDER_CLAUDE, PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDERS, SEPARATOR, TABS, TALK_NEW,
+                          THINK_LEVELS, prepare_folders)
 from aibui.drive import drive_fetch, drive_id, drive_service
 from aibui.files import check_files, types_overview
 from aibui.forms import delete_entry, entry_label, generate_title, reuse_inputs, save_details
@@ -51,14 +54,21 @@ for key in FORM_KEYS:  # hält die Werte am Leben und schickt sie beim erneuten 
 with st.sidebar:
     provider = st.radio("Anbieter für neue Anfragen", PROVIDERS, key="provider", horizontal=True,
                         help="Jeder Eintrag im Tab „Jobs und Ergebnisse“ gehört zu seinem Anbieter und wird mit "
-                             "dessen API-Key abgefragt. Beide Keys dürfen deshalb eingetragen bleiben.")
+                             "dessen API-Key abgefragt. Alle Keys dürfen deshalb eingetragen bleiben.")
     keys = {PROVIDER_GEMINI: st.text_input("Gemini API-Key", os.getenv("GEMINI_API_KEY", ""), type="password"),
-            PROVIDER_OPENAI: st.text_input("OpenAI API-Key", os.getenv("OPENAI_API_KEY", ""), type="password")}
+            PROVIDER_OPENAI: st.text_input("OpenAI API-Key", os.getenv("OPENAI_API_KEY", ""), type="password"),
+            PROVIDER_CLAUDE: st.text_input("Claude API-Key", os.getenv("ANTHROPIC_API_KEY", ""), type="password")}
     if provider == PROVIDER_OPENAI:
         st.session_state.setdefault("model_openai", DEFAULT_OPENAI_MODEL)
         model = st.text_input("Modell", key="model_openai",
                               help="Modellname laut OpenAI, zum Beispiel gpt-6-astra, gpt-6.1-sol oder gpt-6-luna. "
                                    "Das Modell muss die Batch API und Dateieingaben (bei Bildern: Bildeingaben) unterstützen.")
+    elif provider == PROVIDER_CLAUDE:
+        st.session_state.setdefault("model_claude", DEFAULT_CLAUDE_MODEL)
+        model = st.text_input("Modell", key="model_claude",
+                              help="Modellname laut Anthropic, zum Beispiel claude-sonnet-5-5, claude-opus-5-5, "
+                                   "claude-haiku-5-5 oder claude-fable-5-2. Das Modell muss die Message Batches API "
+                                   "und für die Denktiefe den Parameter effort kennen (die aktuellen Modelle tun es).")
     else:
         st.session_state.setdefault("model_gemini", DEFAULT_MODEL)
         model = st.text_input("Modell", key="model_gemini")
@@ -71,7 +81,7 @@ with st.sidebar:
             help="Ist das Feld „Name“ in „Neue Anfrage“ leer, erzeugt ein kleines Gemini-Modell den Namen aus dem "
                  "Anfang der Prompts, ähnlich den Titeln im Verlauf eines Chatbots. Dafür geht ein Auszug der Prompts "
                  f"(höchstens {NAME_SOURCE_CHARS} Zeichen, nie die PDFs) an Google, auch wenn der Lauf selbst bei "
-                 "OpenAI läuft. Ohne Gemini API-Key oder bei einem Fehler gilt der Standardname.")
+                 "OpenAI oder Claude läuft. Ohne Gemini API-Key oder bei einem Fehler gilt der Standardname.")
         name_model = st.text_input(
             "Modell für die Namen", key="name_model",
             help="Gemini-Modell für die Namen, mit dem Gemini API-Key von oben. Voreinstellung ist "
@@ -84,7 +94,7 @@ with st.sidebar:
         if not keys[PROVIDER_GEMINI]:
             st.caption("Ohne Gemini API-Key bekommt jeder neue Eintrag den Standardnamen.")
 if not keys[provider]:
-    env_name = "OPENAI_API_KEY" if provider == PROVIDER_OPENAI else "GEMINI_API_KEY"
+    env_name = {PROVIDER_OPENAI: "OPENAI_API_KEY", PROVIDER_CLAUDE: "ANTHROPIC_API_KEY"}.get(provider, "GEMINI_API_KEY")
     st.info(f"Trage links deinen {provider} API-Key ein oder setze die Umgebungsvariable {env_name}.")
     st.stop()
 
@@ -96,13 +106,13 @@ def client_for(p):
 
 try:
     client = client_for(provider)
-except RuntimeError as e:  # z. B. das Paket openai fehlt
+except RuntimeError as e:  # z. B. das Paket openai oder anthropic fehlt
     st.error(f"Der {provider}-Client lässt sich nicht erstellen: {e}")
     st.stop()
 
 
 def gemini_client():
-    """Gemini-Client für die Namen: der Client des Laufs, bei OpenAI ein eigener (None ohne Gemini API-Key)."""
+    """Gemini-Client für die Namen: der Client des Laufs, bei OpenAI und Claude ein eigener (None ohne Gemini API-Key)."""
     return client if provider == PROVIDER_GEMINI else client_for(PROVIDER_GEMINI)
 
 
@@ -115,9 +125,11 @@ with tab_new:
     note = st.session_state.pop("reused_note", None)
     if note:
         st.info(note)
-    if provider == PROVIDER_OPENAI:
+    if provider in (PROVIDER_OPENAI, PROVIDER_CLAUDE):
         mode = MODE_BATCH
-        st.caption("Mit OpenAI läuft nur der Batch-Modus (50 % Rabatt, Ergebnis innerhalb von 24 Stunden). "
+        within = {PROVIDER_OPENAI: "Ergebnis innerhalb von 24 Stunden",
+                  PROVIDER_CLAUDE: "Ergebnis meist innerhalb einer Stunde, spätestens nach 24 Stunden"}[provider]
+        st.caption(f"Mit {provider} läuft nur der Batch-Modus (50 % Rabatt, {within}). "
                    "Der Modus „Hintergrund“ ist Gemini vorbehalten.")
     else:
         mode = st.radio("Modus", [MODE_BATCH, MODE_BG], horizontal=True, key="mode")
@@ -147,8 +159,9 @@ with tab_new:
                    + ", ".join(f"{k}. {n}" for k, n in enumerate(file_order, 1))
                    + " (hochgeladene Dateien zuerst, dann Drive). Gleiche Dateien werden nur einmal gesendet.")
     else:
-        st.caption("Keine Datei angehängt: Die Prompts werden ohne Datei gesendet. Möglich sind Dokumente (PDF, Word, "
-                   "PowerPoint, Excel, Text), Bilder und bei Gemini auch Audio und Video.")
+        st.caption("Keine Datei angehängt: Die Prompts werden ohne Datei gesendet. Möglich sind "
+                   + ("PDF, Text (auch CSV) und Bilder." if provider == PROVIDER_CLAUDE else
+                      "Dokumente (PDF, Word, PowerPoint, Excel, Text), Bilder und bei Gemini auch Audio und Video."))
     problems = check_files(provider, [f.name for f in uploads])  # Typen, die der gewählte Anbieter nicht annimmt
     if problems:
         st.error("\n".join(f"- {p}" for p in problems)
@@ -174,6 +187,13 @@ with tab_new:
                                   "Voreinstellung des Modells. Welche Stufen ein Modell kennt, hängt vom Modell ab "
                                   "(z. B. kennt gpt-6-astra kein „none“). Andere Stufen lehnt die API ab, "
                                   "der Fehler steht dann im Ergebnis.")
+    elif provider == PROVIDER_CLAUDE:
+        st.session_state.setdefault("effort_claude", "Standard")
+        think = c1.selectbox("Denktiefe", CLAUDE_EFFORTS, key="effort_claude",
+                             help="output_config.effort der Messages API. „Standard“ sendet nichts, dann gilt die "
+                                  "Voreinstellung des Modells (medium bei Opus 5.5 und Haiku 5.5, sonst high). Welche "
+                                  "Stufen ein Modell kennt, hängt vom Modell ab (xhigh gibt es nicht bei allen). Andere "
+                                  "Stufen lehnt die API ab, der Fehler steht dann im Ergebnis.")
     else:
         st.session_state.setdefault("think", "high")
         think = c1.selectbox("Denktiefe", THINK_LEVELS, key="think")
@@ -183,6 +203,12 @@ with tab_new:
                                   key="max_openai",
                                   help="max_output_tokens. Denk-Token zählen zum Limit. Das Maximum hängt vom "
                                        "Modell ab (bei den aktuellen Modellen bis 128.000).")
+    elif provider == PROVIDER_CLAUDE:
+        st.session_state.setdefault("max_claude", 32768)
+        max_out = c2.number_input("Max. Ausgabe-Token", min_value=256, max_value=CLAUDE_MAX_OUT, step=1024,
+                                  key="max_claude",
+                                  help="max_tokens. Denk-Token zählen zum Limit. Das Maximum hängt vom Modell ab "
+                                       "(bei den aktuellen Modellen bis 128.000).")
     elif bg:
         st.session_state.setdefault("max_bg", BG_DEFAULT_OUT)
         max_out = c2.number_input("Max. Ausgabe-Token", min_value=256, max_value=BG_MAX_OUT, step=1024, key="max_bg",
@@ -194,20 +220,31 @@ with tab_new:
         max_out = c2.number_input("Max. Ausgabe-Token", min_value=256, max_value=BATCH_MAX_OUT, step=1024, key="max_batch",
                                   help="Im Batch-Betrieb begrenzt die API die Ausgabe auf 32768 Token. Mehr geht im "
                                        "Modus „Hintergrund“ (Long Decode).")
-    # Art des Eintrags: gibt den Standardnamen (gemini-…, background-gemini-…, openai-…) und den Schlüssel des
-    # Namensfelds vor. Ein Batch heißt nach dem Anbieter, denn „batch“ gibt es bei Gemini und bei OpenAI. Ein Lauf im
-    # Hintergrund nennt Modus und Anbieter: Den Modus gibt es nur bei Gemini, der Name unterscheidet ihn von Batches.
-    kind = "openai" if provider == PROVIDER_OPENAI else "background-gemini" if bg else "gemini"
+    # Art des Eintrags: gibt den Standardnamen (gemini-…, background-gemini-…, openai-…, claude-…) und den Schlüssel
+    # des Namensfelds vor. Ein Batch heißt nach dem Anbieter, denn „batch“ gibt es bei allen. Ein Lauf im Hintergrund nennt
+    # Modus und Anbieter: Den Modus gibt es nur bei Gemini, der Name unterscheidet ihn von Batches.
+    kind = {PROVIDER_OPENAI: "openai", PROVIDER_CLAUDE: "claude"}.get(provider, "background-gemini" if bg else "gemini")
     naming_on = auto_name and bool(keys[PROVIDER_GEMINI])  # sonst gilt der Standardname
     label = c3.text_input("Name", key="label_" + kind,
                           placeholder="automatisch aus dem Prompt" if naming_on else default_label(kind),
                           help="Leer lassen: Der Name wird aus dem Prompt erzeugt (Seitenleiste „Namen der Einträge“), "
                                "sonst gilt der Standardname. Im Tab „Jobs und Ergebnisse“ lassen sich Name und "
                                "Beschreibung später ändern.")
-    if naming_on and provider == PROVIDER_OPENAI and not label.strip():
+    if naming_on and provider != PROVIDER_GEMINI and not label.strip():
         st.caption(f"Der Name wird mit Gemini erzeugt: Ein Auszug der Prompts (höchstens {NAME_SOURCE_CHARS} Zeichen, "
-                   "ohne Dateien) geht dafür an Google, auch bei einem OpenAI-Lauf. Abschalten: Seitenleiste, "
+                   f"ohne Dateien) geht dafür an Google, auch bei einem {provider}-Lauf. Abschalten: Seitenleiste, "
                    "„Namen der Einträge“.")
+    cache = False
+    if provider == PROVIDER_CLAUDE:
+        st.session_state.setdefault("cache_claude", False)
+        cache = st.checkbox("Dateien im Prompt-Cache halten (1 Stunde)", key="cache_claude",
+                            help="Markiert die Dateien (samt Systemanweisung davor) für den Prompt-Cache von Claude. "
+                                 "Schreiben in den Cache kostet das Doppelte des Eingabepreises, Lesen nur einen "
+                                 "Bruchteil. Das lohnt sich bei vielen Prompts zu denselben Dateien. Weil ein Batch "
+                                 "seine Anfragen gleichzeitig bearbeitet, ist ein Treffer nicht garantiert (Anthropic "
+                                 "nennt 30 bis 98 %). Bei einem einzelnen Prompt kostet es nur mehr. Ohne Dateien gibt "
+                                 "es nichts zu cachen, und kürzere Präfixe als je nach Modell 512 bis 4.096 Token "
+                                 "cacht Claude nicht.")
     if bg:
         st.caption(
             f"{len(prompts)} Prompt(s) erkannt. Jeder Prompt läuft als Hintergrund-Interaktion bei Google (Interactions "
@@ -223,6 +260,13 @@ with tab_new:
             "Ergebnisse innerhalb von 24 Stunden. Die Dateien stehen in jeder Anfrage an erster Stelle, damit der "
             "Prefix für das automatische Caching (ab 1.024 Token) identisch ist. Treffer siehst du unter "
             "„Jobs und Ergebnisse“."
+        )
+    elif provider == PROVIDER_CLAUDE:
+        st.caption(
+            f"{len(prompts)} Prompt(s) erkannt. Die Message Batches API von Anthropic kostet 50 % des Standardpreises. "
+            "Die meisten Batches enden innerhalb einer Stunde, Anfragen, die nach 24 Stunden noch offen sind, verfallen. "
+            "Die Dateien stehen in jeder Anfrage an erster Stelle. Claude cacht sie nur, wenn du das Kästchen „Dateien "
+            "im Prompt-Cache halten“ anschaltest. Treffer siehst du unter „Jobs und Ergebnisse“."
         )
     else:
         st.caption(
@@ -246,7 +290,8 @@ with tab_new:
                         seen.add(digest)
                         unique.append((fname, data))
                 names, uploaded = [n for n, _ in unique], []
-                upload = upload_file_openai if provider == PROVIDER_OPENAI else upload_file
+                upload = {PROVIDER_OPENAI: upload_file_openai, PROVIDER_CLAUDE: upload_file_claude}.get(provider,
+                                                                                                    upload_file)
                 for k, (fname, data) in enumerate(unique, 1):
                     status.update(label=f"Lade Datei {k} von {len(unique)} zu {provider} hoch …" + HINT)
                     uploaded.append(upload(client, fname, data))
@@ -265,6 +310,14 @@ with tab_new:
                     entry = {"name": batch_id, "provider": PROVIDER_OPENAI, "label": title, "model": model,
                              "pdf": ", ".join(names) or None, "pdfs": names, "prompts": keyed, "system": system.strip(),
                              "think": think, "max_out": int(max_out),
+                             "created": datetime.now().isoformat(timespec="seconds")}
+                    mutate_jobs(rt.lock, lambda jobs: jobs.insert(0, entry))
+                elif provider == PROVIDER_CLAUDE:
+                    batch_id, keyed = start_claude_batch(client, model, uploaded, prompts, system.strip(), think,
+                                                         max_out, cache)
+                    entry = {"name": batch_id, "provider": PROVIDER_CLAUDE, "label": title, "model": model,
+                             "pdf": ", ".join(names) or None, "pdfs": names, "prompts": keyed, "system": system.strip(),
+                             "think": think, "max_out": int(max_out), "cache": cache,
                              "created": datetime.now().isoformat(timespec="seconds")}
                     mutate_jobs(rt.lock, lambda jobs: jobs.insert(0, entry))
                 else:
@@ -318,10 +371,12 @@ with tab_jobs:
         mode_j, grp, entry_prov = entry_mode(j), entry_group(j), entry_provider(j)
         kind_txt = ((f"synchron, {grp} Prompts pro Gespräch" if grp > 1 else "synchron") if mode_j == "sync"
                     else "Hintergrund (Long Decode)" if mode_j == "background"
-                    else "Batch (OpenAI)" if entry_prov == PROVIDER_OPENAI else "Batch")
+                    else "Batch (OpenAI)" if entry_prov == PROVIDER_OPENAI
+                    else "Batch (Claude)" if entry_prov == PROVIDER_CLAUDE else "Batch")
         st.caption(f"{j['name']}, {kind_txt}, gesendet: Modell {j['model']}, "
                    f"Denktiefe {j.get('think', 'unbekannt')}, max. {j.get('max_out', '?')} Ausgabe-Token, "
-                   f"Dateien: {j['pdf'] or 'keine'}, {len(j['prompts'])} Prompt(s)")
+                   f"Dateien: {j['pdf'] or 'keine'}, {len(j['prompts'])} Prompt(s)"
+                   + (", Prompt-Cache (1 Stunde)" if j.get("cache") else ""))
         if mode_j == "sync":
             running = False  # ältere synchrone Einträge: nichts läuft mehr, nichts ist abzufragen
         else:

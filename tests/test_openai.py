@@ -13,9 +13,9 @@ import pytest
 
 import helpers
 from fakes import FakeGemini, FakeOpenAI, OpenAIError, install, install_openai, make_openai_body
-from helpers import (APP_PATH, MODE_BATCH, PROVIDER_GEMINI, PROVIDER_OPENAI, TAB_JOBS, TAB_NEW, batch_entry, button,
-                     captions, click, finished_batch, finished_openai_batch, markdown, new_app, new_openai_app,
-                     openai_entry, read_history, sent_to_browser, set_prompts, write_history)
+from helpers import (APP_PATH, MODE_BATCH, PROVIDER_CLAUDE, PROVIDER_GEMINI, PROVIDER_OPENAI, TAB_JOBS, TAB_NEW,
+                     batch_entry, button, captions, click, finished_batch, finished_openai_batch, markdown, new_app,
+                     new_openai_app, openai_entry, read_history, sent_to_browser, set_prompts, write_history)
 
 ui = pytest.mark.ui
 PDF = "application/pdf"
@@ -50,7 +50,7 @@ def requests(*keys):
 
 def test_ui_texts_used_by_the_openai_tests_match_the_app(app):
     assert app.PROVIDER_GEMINI == PROVIDER_GEMINI and app.PROVIDER_OPENAI == PROVIDER_OPENAI
-    assert app.PROVIDERS == [PROVIDER_GEMINI, PROVIDER_OPENAI]
+    assert app.PROVIDERS == [PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDER_CLAUDE]
 
 
 # ---------- Anbieter und Clients ----------
@@ -371,7 +371,8 @@ def test_the_default_provider_is_gemini_and_shows_no_openai_widgets(use_gemini):
     at.run()
     assert not at.exception and at.radio(key="provider").value == PROVIDER_GEMINI
     assert at.radio(key="mode").value == MODE_BATCH
-    assert [t.label for t in at.text_input if "API-Key" in t.label] == ["Gemini API-Key", "OpenAI API-Key"]
+    assert [t.label for t in at.text_input if "API-Key" in t.label] == ["Gemini API-Key", "OpenAI API-Key",
+                                                                         "Claude API-Key"]
     assert not [s for s in at.selectbox if s.key == "effort"]
 
 

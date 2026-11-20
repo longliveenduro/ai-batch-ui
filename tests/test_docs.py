@@ -12,7 +12,7 @@ TESTS_SOURCE = "\n".join(p.read_text("utf-8") for p in TEST_FILES)
 EXTERNAL_FUNCTIONS = {"generate_content", "create", "count_tokens", "model_dump", "exec", "get", "setdefault", "tabs",
                       "fragment", "rerun", "run", "set_value", "from_file", "getattr", "compile", "split", "join",
                       "resolve", "mkdir", "read_text", "write_text", "glob", "upload", "download", "cancel"}
-EXTERNAL_CONSTANTS = {"GEMINI_API_KEY", "OPENAI_API_KEY", "AI_BATCH_UI_HOME", "MAX_TOKENS", "STOP", "SAFETY", "RUNNING",
+EXTERNAL_CONSTANTS = {"GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "AI_BATCH_UI_HOME", "MAX_TOKENS", "STOP", "SAFETY", "RUNNING",
                       "DONE", "FAILED", "CANCELLED", "INTERRUPTED", "PENDING", "STREAMLIT_LOGGER_LEVEL",
                       "GEMINI_UI_HOME"}  # alter Name von AI_BATCH_UI_HOME, steht nur im Hinweis zur Umbenennung (Issue #18)
 
@@ -49,8 +49,8 @@ def test_session_and_widget_keys_in_the_readme_exist_in_the_code():
 
 def test_requirement_versions_are_documented():
     requirements = (ROOT / "requirements.txt").read_text()
-    pinned = re.findall(r"^(streamlit|google-genai|openai)(>=[0-9.]+)", requirements, flags=re.M)
-    assert len(pinned) == 3
+    pinned = re.findall(r"^(streamlit|google-genai|openai|anthropic)(>=[0-9.]+)", requirements, flags=re.M)
+    assert len(pinned) == 4
     for name, version in pinned:
         assert f"{name}{version}" in README, f"{name}{version} aus requirements.txt fehlt in der README"
 

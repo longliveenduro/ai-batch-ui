@@ -36,18 +36,20 @@ def project_folder_stays_untouched():
 
 @pytest.fixture(autouse=True)
 def home(tmp_path, monkeypatch):
-    """Wegwerf-Ordner als Wurzel für conf/ und data/ (AI_BATCH_UI_HOME) und Dummy-API-Keys für beide Anbieter."""
+    """Wegwerf-Ordner als Wurzel für conf/ und data/ (AI_BATCH_UI_HOME) und Dummy-API-Keys für alle Anbieter."""
     folder = tmp_path / "home"
     folder.mkdir()
     monkeypatch.setenv("AI_BATCH_UI_HOME", str(folder))
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-claude-key")
     return folder
 
 
 @pytest.fixture(autouse=True)
 def no_real_api(monkeypatch):
     """Ohne installierten Fake-Client scheitert jeder Versuch, einen echten Client zu bauen."""
+    import anthropic
     import google.genai as genai
     import openai
 
@@ -56,6 +58,7 @@ def no_real_api(monkeypatch):
 
     monkeypatch.setattr(genai, "Client", refuse)
     monkeypatch.setattr(openai, "OpenAI", refuse)
+    monkeypatch.setattr(anthropic, "Anthropic", refuse)
 
 
 def forget_package():
