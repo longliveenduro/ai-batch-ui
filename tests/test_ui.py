@@ -330,7 +330,7 @@ def test_reuse_inputs_of_an_old_synchronous_entry_opens_the_background_mode(use_
     assert any("übernommen" in i.value and "a.pdf, b.pdf" in i.value and "Modus gibt es nicht mehr" in i.value
                for i in at.info)
     at.run()
-    assert not at.info  # der Hinweis erscheint nur einmal
+    assert not any("übernommen" in i.value for i in at.info)  # der Hinweis erscheint nur einmal
 
 
 def test_reuse_inputs_of_a_batch_entry_switches_to_batch_mode(use_fake, home):

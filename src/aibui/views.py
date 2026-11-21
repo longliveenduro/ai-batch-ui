@@ -1,4 +1,5 @@
-"""Anzeige der Einträge und Ergebnisse. job_panel() läuft als Fragment (siehe Tab „Jobs und Ergebnisse“)."""
+"""Anzeige der Einträge und Ergebnisse. job_panel() läuft als Fragment (siehe Tab „Jobs und Ergebnisse“).
+show_costs() zeichnet die Infobox mit den Kosten des gewählten Modells in der Seitenleiste."""
 from datetime import datetime
 
 import streamlit as st
@@ -6,8 +7,19 @@ import streamlit as st
 from .config import BATCH_MAX_OUT, DONE, MAX_POLL_ERRORS, POLL_SECONDS, PROVIDER_GEMINI, TALK_NEW
 from .forms import continue_conversation
 from .naming import file_stem
+from .pricing import costs_caption, costs_help, costs_markdown, find_model
 from .providers import batch_info, cancel_batch, entry_mode, entry_provider, refresh
 from .talk import conversation_text, entry_group, history_turns, parse_conversation, short_prompt
+
+
+def show_costs(provider, model):
+    """Infobox mit den Kosten des gewählten Modells (Seitenleiste, unter dem Feld „Modell“), darunter der Stand der
+    Preise. Ohne Modellnamen bleibt sie weg, bei einem Modell ohne Preis zeigt sie nur den Hinweis."""
+    text = costs_markdown(provider, model)
+    if text:
+        st.info(text)
+        if find_model(provider, model):
+            st.caption(costs_caption(), help=costs_help(provider))
 
 
 def show_text(text):
