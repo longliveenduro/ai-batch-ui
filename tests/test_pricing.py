@@ -10,35 +10,12 @@ from decimal import Decimal as D
 
 import pytest
 
-from fakes import FakeClaude, FakeGemini, FakeOpenAI, install, install_claude, install_openai
 from helpers import (APP_PATH, PROVIDER_CLAUDE, PROVIDER_GEMINI, PROVIDER_OPENAI, ROOT, new_app, new_claude_app,
-                     new_openai_app)
+                     new_openai_app, type_model)
 
 ui = pytest.mark.ui
 BEFORE, CHANGE = date(2026, 11, 20), date(2026, 12, 1)  # Tag vor dem Preiswechsel bei Gemini 4 und sein erster Tag
 HEADER = ["| | Eingabe | Ausgabe | Cache |", "|---|--:|--:|--:|"]
-
-
-@pytest.fixture
-def pricing(app):
-    """Das Modul pricing."""
-    return app.modules["pricing"]
-
-
-@pytest.fixture
-def on_day(pricing, monkeypatch):
-    """on_day(Datum) legt fest, welcher Tag für die Preise heute ist."""
-    def make(day):
-        monkeypatch.setattr(pricing, "today", lambda: day)
-    return make
-
-
-@pytest.fixture
-def use_all(monkeypatch):
-    """Installiert Fakes für alle drei Anbieter, damit die Oberfläche jeden von ihnen bauen kann."""
-    install(monkeypatch, FakeGemini())
-    install_openai(monkeypatch, FakeOpenAI())
-    install_claude(monkeypatch, FakeClaude())
 
 
 def box(at):
@@ -57,6 +34,8 @@ def test_the_price_table_is_well_formed(pricing):
     prefixes = {PROVIDER_GEMINI: "gemini-", PROVIDER_OPENAI: "gpt-", PROVIDER_CLAUDE: "claude-"}
     assert set(pricing.PRICES) == set(prefixes)
     for provider, models in pricing.PRICES.items():
+        assert 1 <= len(models) <= pricing.MAX_MODELS, (
+            f"{provider}: Die Auswahl zeigt höchstens {pricing.MAX_MODELS} Modelle")
         for name, periods in models.items():
             assert name.startswith(prefixes[provider]) and name == name.lower() and name == name.strip()
             assert periods[0][0] is None  # der erste Preisstand gilt von jeher
@@ -69,17 +48,16 @@ def test_the_price_table_is_well_formed(pricing):
                     assert 0 < cached < price_in < price_out, f"{name}: Die Preise ergeben keinen Sinn"
 
 
-def test_the_default_models_and_the_models_named_in_the_help_texts_have_prices(app):
-    defaults = {PROVIDER_GEMINI: app.DEFAULT_MODEL, PROVIDER_OPENAI: app.DEFAULT_OPENAI_MODEL,
-                PROVIDER_CLAUDE: app.DEFAULT_CLAUDE_MODEL}
-    for provider, name in defaults.items():
-        assert app.find_model(provider, name) == name
-    source = APP_PATH.read_text(encoding="utf-8")
-    named = {PROVIDER_OPENAI: ["gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"],
-             PROVIDER_CLAUDE: ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-2"]}
-    for provider, names in named.items():
-        for name in names:
-            assert name in source and app.find_model(provider, name) == name
+def test_every_model_the_list_offers_has_a_price(app):
+    """Die Auswahl im Feld „Modell“ kommt aus der Tabelle (Issue #11): Zu jedem Modell darin gibt es also einen Preis,
+    am Tag der Tests wie vor und nach dem Preiswechsel. Auch die Voreinstellung (der erste Eintrag) hat einen."""
+    for provider in app.PROVIDERS:
+        for day in (BEFORE, CHANGE, app.PRICES_AS_OF):
+            names = app.model_choices(provider, day)
+            assert names and app.default_model(provider, day) == names[0]
+            for name in names:
+                assert app.find_model(provider, name) == name
+                assert app.model_costs(provider, name, day)["rows"]
     assert app.find_model(PROVIDER_GEMINI, "gemini-4-argon") == "gemini-4-argon"  # der Vorgänger von Carbon
 
 
@@ -88,6 +66,10 @@ def test_the_default_models_and_the_models_named_in_the_help_texts_have_prices(a
     (PROVIDER_GEMINI, "  Gemini-4-Carbon ", "gemini-4-carbon"),  # Großschreibung und Leerzeichen zählen nicht
     (PROVIDER_GEMINI, "models/gemini-4-argon", "gemini-4-argon"),  # so nennt die Gemini API ihre Modelle
     (PROVIDER_OPENAI, "gpt-6-astra-2026-09-01", "gpt-6-astra"),  # ein angehängter Stand zählt nicht
+    (PROVIDER_OPENAI, "gpt-6.2-astra-2026-11-01", "gpt-6.2-astra"),
+    (PROVIDER_OPENAI, "gpt-6.1-sol", None),  # steht nicht mehr in der Tabelle: Das 6.2er Modell löste es ab
+    (PROVIDER_GEMINI, "models/gemini-4-neon", "gemini-4-neon"),
+    (PROVIDER_GEMINI, "Gemini-4-Hydrogen", "gemini-4-hydrogen"),
     (PROVIDER_CLAUDE, "claude-sonnet-5-5-20261001", "claude-sonnet-5-5"),
     (PROVIDER_OPENAI, "gpt-6-astra-pro", None),  # eine andere Fassung hat einen anderen Preis
     (PROVIDER_OPENAI, "gpt-6", None),
@@ -220,9 +202,11 @@ def test_the_date_of_the_prices_is_named_with_its_constant_in_the_readme(pricing
 
 # ---------- Oberfläche ----------
 @ui
-def test_the_sidebar_shows_the_costs_of_the_gemini_model(use_all, on_day):
+def test_the_sidebar_shows_the_costs_of_the_gemini_model(use_all, on_day, pricing):
     on_day(BEFORE)
     at = new_app()
+    at.run()
+    at.selectbox(key="model_gemini").set_value("gemini-4-carbon")  # vor dem Preiswechsel ist Neon vorausgewählt
     at.run()
     assert not at.exception
     text = box(at)
@@ -230,7 +214,7 @@ def test_the_sidebar_shows_the_costs_of_the_gemini_model(use_all, on_day):
     assert "| Batch | 1,00 | 5,00 | 0,05 |" in text and "| Hintergrund (Long Decode) | 2,00 | 10,00 | 0,10 |" in text
     assert "**Ab 01.12.2026**" in text and "| Hintergrund (Long Decode) | 4,00 | 20,00 | 0,20 |" in text
     [note] = stand_captions(at)
-    assert "20.11.2026" in note.value and "Long Decode" in note.help
+    assert f"{pricing.PRICES_AS_OF:%d.%m.%Y}" in note.value and "Long Decode" in note.help
 
 
 @ui
@@ -245,6 +229,7 @@ def test_the_costs_follow_the_date_of_the_price_change(use_all, on_day):
 
 
 @ui
+@pytest.mark.real_date
 def test_the_info_box_works_with_the_real_date(use_all):
     at = new_app()
     at.run()
@@ -256,16 +241,12 @@ def test_the_costs_follow_the_model_field(use_all, on_day):
     on_day(BEFORE)
     at = new_app()
     at.run()
-    at.text_input(key="model_gemini").set_value("gemini-4-argon")
+    at.selectbox(key="model_gemini").set_value("gemini-4-argon")
     at.run()
     assert not at.exception and "`gemini-4-argon`" in box(at) and len(stand_captions(at)) == 1
-    at.text_input(key="model_gemini").set_value("gemini-9-xenon")
-    at.run()
+    type_model(at, "model_gemini", "gemini-9-xenon")  # ein getippter Name, den die Tabelle nicht kennt
     assert not at.exception and "kein Preis hinterlegt" in box(at) and "`gemini-9-xenon`" in box(at)
     assert not stand_captions(at)  # ohne Preis gibt es keinen Stand
-    at.text_input(key="model_gemini").set_value("   ")
-    at.run()
-    assert not at.exception and box(at) is None and not stand_captions(at)
 
 
 @ui
@@ -278,7 +259,7 @@ def test_the_sidebar_shows_the_batch_costs_of_the_openai_model(use_all, on_day):
     assert "`gpt-6-astra`" in text and "Hintergrund" not in text
     assert "| Batch, Prompt bis 272.000 Token | 5,00 | 25,00 | 0,50 |" in text
     assert "| Batch, Prompt über 272.000 Token | 10,00 | 37,50 | 1,00 |" in text
-    at.text_input(key="model_openai").set_value("gpt-6-luna")
+    at.selectbox(key="model_openai").set_value("gpt-6-luna")
     at.run()
     assert not at.exception and "`gpt-6-luna`" in box(at)
     assert "| Batch, Prompt bis 272.000 Token | 0,05 | 0,25 | 0,005 |" in box(at)
@@ -289,23 +270,25 @@ def test_the_sidebar_shows_the_batch_costs_of_the_claude_model(use_all, on_day):
     on_day(BEFORE)
     at = new_claude_app()
     at.run()
+    at.selectbox(key="model_claude").set_value("claude-sonnet-5-5")  # vorausgewählt ist das teuerste: Fable
+    at.run()
     assert not at.exception
     text = box(at)
     assert "`claude-sonnet-5-5`" in text and "Hintergrund" not in text and "| Batch | 1,00 | 5,00 | 0,05 |" in text
     [note] = stand_captions(at)
     assert "Prompt-Cache" in note.help  # Hinweis auf das Kästchen, ohne das es keine Cache-Treffer gibt
-    at.text_input(key="model_claude").set_value("claude-haiku-5-5")
+    at.selectbox(key="model_claude").set_value("claude-haiku-5-5")
     at.run()
     assert not at.exception and "| Batch, Prompt über 100.000 Token | 0,25 | 1,25 | 0,025 |" in box(at)
 
 
 @ui
-def test_the_costs_follow_the_provider(use_all, on_day):
+def test_the_costs_follow_the_provider(use_all, on_day, pricing):
     on_day(BEFORE)
     at = new_app()
     at.run()
-    for provider, model in [(PROVIDER_OPENAI, "gpt-6-astra"), (PROVIDER_CLAUDE, "claude-sonnet-5-5"),
-                            (PROVIDER_GEMINI, "gemini-4-carbon")]:
+    for provider in (PROVIDER_OPENAI, PROVIDER_CLAUDE, PROVIDER_GEMINI):
+        model = pricing.default_model(provider)  # jeder Anbieter zeigt die Kosten seines vorausgewählten Modells
         at.radio(key="provider").set_value(provider)
         at.run()
         assert not at.exception and f"`{model}`" in box(at), provider
@@ -313,10 +296,10 @@ def test_the_costs_follow_the_provider(use_all, on_day):
 
 
 @ui
-def test_the_costs_are_shown_even_without_an_api_key(monkeypatch, on_day):
+def test_the_costs_are_shown_even_without_an_api_key(monkeypatch, on_day, pricing):
     monkeypatch.setenv("GEMINI_API_KEY", "")
     on_day(BEFORE)
     at = new_app()
     at.run()
     assert not at.exception and any("Gemini API-Key" in i.value for i in at.info)
-    assert "`gemini-4-carbon`" in box(at)
+    assert f"`{pricing.default_model(PROVIDER_GEMINI)}`" in box(at)

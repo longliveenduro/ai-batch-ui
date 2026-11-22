@@ -24,7 +24,8 @@ from fakes import (ClaudeError, FakeClaude, FakeGemini, FakeOpenAI, batch_json, 
                    install_claude, install_openai, json_response, jsonl_response, make_claude_message, real_claude_client)
 from helpers import (MODE_BATCH, PROVIDER_CLAUDE, PROVIDER_GEMINI, PROVIDER_OPENAI, TAB_JOBS, TAB_NEW, batch_entry,
                      button, captions, claude_entry, click, finished_batch, finished_claude_batch, markdown,
-                     new_app, new_claude_app, openai_entry, read_history, sent_to_browser, set_prompts, write_history)
+                     model_field, new_app, new_claude_app, openai_entry, read_history, sent_to_browser, set_prompts,
+                     write_history)
 
 ui = pytest.mark.ui
 PDF = "application/pdf"
@@ -73,7 +74,6 @@ def started(fake, *keys):
 # ---------- Anbieter und Clients ----------
 def test_ui_texts_used_by_the_claude_tests_match_the_app(app):
     assert app.PROVIDER_CLAUDE == PROVIDER_CLAUDE and app.PROVIDERS[-1] == PROVIDER_CLAUDE
-    assert app.DEFAULT_CLAUDE_MODEL == "claude-sonnet-5-5"
 
 
 def test_entry_provider_reads_claude_entries_and_keeps_the_others(app):
@@ -613,7 +613,7 @@ def test_claude_shows_its_own_defaults_and_no_mode_switch(use_claude):
     at = new_claude_app()
     at.run()
     assert not at.exception and not at.error
-    assert [t for t in at.text_input if t.label == "Modell"][0].value == "claude-sonnet-5-5"
+    assert model_field(at).value == "claude-fable-5-2"  # vorausgewählt ist das teuerste Modell (Issue #11)
     assert not [r for r in at.radio if r.key == "mode"]  # mit Claude gibt es nur Batch
     effort = at.selectbox(key="effort_claude")
     assert effort.value == "Standard" and effort.options == ["Standard", "low", "medium", "high", "xhigh", "max"]
@@ -661,11 +661,11 @@ def test_switching_the_provider_in_the_sidebar_swaps_the_form_to_claude_and_back
     at.run()
     assert not at.exception and at.selectbox(key="effort_claude").value == "Standard"
     assert not [r for r in at.radio if r.key == "mode"] and not [s for s in at.selectbox if s.key == "think"]
-    assert [t for t in at.text_input if t.label == "Modell"][0].value == "claude-sonnet-5-5"
+    assert model_field(at).value == "claude-fable-5-2"
     at.radio(key="provider").set_value(PROVIDER_GEMINI)
     at.run()
     assert not at.exception and at.selectbox(key="think").value == "high" and at.radio(key="mode").value == MODE_BATCH
-    assert [t for t in at.text_input if t.label == "Modell"][0].value == "gemini-4-carbon"
+    assert model_field(at).value == "gemini-4-carbon"
     assert not [s for s in at.selectbox if s.key == "effort_claude"]
 
 
@@ -725,7 +725,7 @@ def test_the_default_model_is_shown_again_after_a_visit_to_claude_without_its_ke
     at.radio(key="provider").set_value(PROVIDER_GEMINI)
     at.run()
     assert not at.exception
-    sent_to_browser(at.text_input(key="model_gemini"), "gemini-4-carbon")
+    sent_to_browser(at.selectbox(key="model_gemini"), "gemini-4-carbon")
     assert at.number_input(key="max_batch").proto.value == 32768
     sent_to_browser(at.selectbox(key="think"), "high")
 
@@ -740,12 +740,12 @@ def test_each_provider_keeps_its_own_settings_when_claude_joins_the_switching(us
     at.run()
     at.radio(key="provider").set_value(PROVIDER_OPENAI)
     at.run()
-    at.text_input(key="model_openai").set_value("gpt-6-luna")
+    at.selectbox(key="model_openai").set_value("gpt-6-luna")
     at.selectbox(key="effort").set_value("high")
     at.run()
     at.radio(key="provider").set_value(PROVIDER_CLAUDE)
     at.run()
-    at.text_input(key="model_claude").set_value("claude-opus-5-5")
+    at.selectbox(key="model_claude").set_value("claude-opus-5-5")
     at.selectbox(key="effort_claude").set_value("xhigh")
     at.number_input(key="max_claude").set_value(65536)
     at.checkbox(key="cache_claude").set_value(True)
@@ -759,10 +759,10 @@ def test_each_provider_keeps_its_own_settings_when_claude_joins_the_switching(us
                 sent_to_browser(at.selectbox(key="think"), "low")
                 sent_to_browser(at.number_input(key="max_batch"), 4096)
             elif provider == PROVIDER_OPENAI:
-                sent_to_browser(at.text_input(key="model_openai"), "gpt-6-luna")
+                sent_to_browser(at.selectbox(key="model_openai"), "gpt-6-luna")
                 sent_to_browser(at.selectbox(key="effort"), "high")
             else:
-                sent_to_browser(at.text_input(key="model_claude"), "claude-opus-5-5")
+                sent_to_browser(at.selectbox(key="model_claude"), "claude-opus-5-5")
                 sent_to_browser(at.selectbox(key="effort_claude"), "xhigh")
                 sent_to_browser(at.number_input(key="max_claude"), 65536)
                 sent_to_browser(at.checkbox(key="cache_claude"), True)
@@ -805,14 +805,15 @@ def test_claude_batch_start_uploads_the_files_and_stores_the_entry(use_claude, h
     first, second = fake.batch_requests
     assert (first["custom_id"], second["custom_id"]) == ("prompt-1", "prompt-2")
     params = first["params"]
-    assert params["model"] == "claude-sonnet-5-5" and params["system"] == "Sei kurz."
+    assert params["model"] == "claude-fable-5-2" and params["system"] == "Sei kurz."  # die Voreinstellung
     assert params["output_config"] == {"effort": "high"} and params["max_tokens"] == 4096
     assert [b.get("source", {}).get("file_id") or b["text"] for b in params["messages"][0]["content"]] == [
         "file_fake000001", "file_fake000002", "Erster Prompt"]
     assert second["params"]["messages"][0]["content"][-1]["text"] == "Zweiter Prompt"
     entry = read_history(home)[0]
     assert entry["provider"] == PROVIDER_CLAUDE and entry["name"] == "msgbatch_fake000001" and "state" not in entry
-    assert (entry["model"], entry["think"], entry["max_out"], entry["cache"]) == ("claude-sonnet-5-5", "high", 4096, False)
+    assert (entry["model"], entry["think"], entry["max_out"], entry["cache"]) == (
+        "claude-fable-5-2", "high", 4096, False)
     assert entry["pdf"] == "Buch 1.pdf, Buch 2.pdf" and entry["pdfs"] == ["Buch 1.pdf", "Buch 2.pdf"]
     assert entry["system"] == "Sei kurz."
     assert entry["prompts"] == {"prompt-1": "Erster Prompt", "prompt-2": "Zweiter Prompt"}
@@ -838,7 +839,7 @@ def test_the_model_field_decides_which_claude_model_is_used(use_claude, home):
     fake = use_claude()
     at = new_claude_app()
     at.run()
-    [t for t in at.text_input if t.label == "Modell"][0].set_value("claude-haiku-5-5")
+    model_field(at).set_value("claude-haiku-5-5")  # aus der Liste gewählt
     set_prompts(at, "Frage")
     click(at, "Batch starten")
     assert fake.batch_requests[0]["params"]["model"] == "claude-haiku-5-5"
@@ -1208,7 +1209,7 @@ def test_reuse_inputs_of_a_claude_entry_switches_to_claude_and_restores_the_sett
     at.run()
     assert not at.exception and at.session_state["view"] == TAB_NEW
     assert at.radio(key="provider").value == PROVIDER_CLAUDE
-    assert [t for t in at.text_input if t.label == "Modell"][0].value == "claude-opus-5-5"
+    assert model_field(at).value == "claude-opus-5-5"
     assert at.selectbox(key="effort_claude").value == "xhigh" and at.number_input(key="max_claude").value == 65536
     assert at.checkbox(key="cache_claude").value is True
     assert at.text_area(key="raw").value == "Eins" and at.text_area(key="system").value == "Kurz."
@@ -1241,7 +1242,7 @@ def test_reuse_inputs_of_a_gemini_entry_switches_back_from_claude(use_claude, us
     at.run()
     assert not at.exception and at.radio(key="provider").value == PROVIDER_GEMINI
     assert at.radio(key="mode").value == MODE_BATCH and at.selectbox(key="think").value == "medium"
-    assert [t for t in at.text_input if t.label == "Modell"][0].value == "gemini-anderes-modell"
+    assert model_field(at).value == "gemini-anderes-modell"  # ein eigener Name aus dem Verlauf bleibt wählbar
 
 
 @ui

@@ -9,11 +9,14 @@ import pkgutil  # noqa: E402
 import sys  # noqa: E402
 import threading  # noqa: E402
 import time as real_time  # noqa: E402
+from datetime import date  # noqa: E402
 from types import SimpleNamespace  # noqa: E402
 
 import pytest  # noqa: E402
 
 from helpers import PACKAGE, PACKAGE_DIR, ROOT  # noqa: E402
+
+PRICE_DAY = date(2026, 12, 15)  # der Tag der Preise in allen Tests: nach dem Preiswechsel von Gemini 4 am 01.12.2026
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -75,6 +78,43 @@ def fresh_package(home):
     forget_package()
     yield
     forget_package()
+
+
+@pytest.fixture(autouse=True)
+def price_day(request, fresh_package, monkeypatch):
+    """Alle Tests rechnen die Preise mit demselben Tag PRICE_DAY. Sonst hinge das vorausgewählte Gemini-Modell vom
+    Datum des Laufs ab (pricing.model_choices(): bis 30.11.2026 ist Neon das teuerste Modell, danach Carbon). Das Modul
+    pricing wird hier vorab importiert, damit das Hauptskript in den Oberflächentests dasselbe Modul mit dem festen Tag
+    nutzt. Ein Test, der einen anderen Tag braucht, setzt ihn selbst (Fixture on_day). Ein Test, der die echte Uhr
+    oder einen frischen Import von aibui braucht (etwa aus einer Kopie des Pakets), trägt den Marker real_date: Dann
+    tut die Fixture nichts."""
+    if request.node.get_closest_marker("real_date"):
+        return
+    pricing = importlib.import_module(f"{PACKAGE}.pricing")
+    monkeypatch.setattr(pricing, "today", lambda: PRICE_DAY)
+
+
+@pytest.fixture
+def pricing(app):
+    """Das Modul pricing."""
+    return app.modules["pricing"]
+
+
+@pytest.fixture
+def on_day(pricing, monkeypatch):
+    """on_day(Datum) legt fest, welcher Tag für die Preise heute ist (statt PRICE_DAY)."""
+    def make(day):
+        monkeypatch.setattr(pricing, "today", lambda: day)
+    return make
+
+
+@pytest.fixture
+def use_all(monkeypatch):
+    """Installiert Fakes für alle drei Anbieter, damit die Oberfläche jeden von ihnen bauen kann."""
+    from fakes import FakeClaude, FakeGemini, FakeOpenAI, install, install_claude, install_openai
+    install(monkeypatch, FakeGemini())
+    install_openai(monkeypatch, FakeOpenAI())
+    install_claude(monkeypatch, FakeClaude())
 
 
 class StubTime:

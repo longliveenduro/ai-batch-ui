@@ -14,8 +14,9 @@ import pytest
 import helpers
 from fakes import FakeGemini, FakeOpenAI, OpenAIError, install, install_openai, make_openai_body
 from helpers import (APP_PATH, MODE_BATCH, PROVIDER_CLAUDE, PROVIDER_GEMINI, PROVIDER_OPENAI, TAB_JOBS, TAB_NEW,
-                     batch_entry, button, captions, click, finished_batch, finished_openai_batch, markdown, new_app,
-                     new_openai_app, openai_entry, read_history, sent_to_browser, set_prompts, write_history)
+                     batch_entry, button, captions, click, finished_batch, finished_openai_batch, markdown, model_field,
+                     new_app, new_openai_app, openai_entry, read_history, sent_to_browser, set_prompts, type_model,
+                     write_history)
 
 ui = pytest.mark.ui
 PDF = "application/pdf"
@@ -382,7 +383,7 @@ def test_openai_shows_its_own_defaults_and_no_mode_switch(use_openai):
     at = new_openai_app()
     at.run()
     assert not at.exception and not at.error
-    assert [t for t in at.text_input if t.label == "Modell"][0].value == "gpt-6-astra"
+    assert model_field(at).value == "gpt-6-astra"
     assert not [r for r in at.radio if r.key == "mode"]  # mit OpenAI gibt es nur Batch
     assert at.selectbox(key="effort").value == "Standard" and at.selectbox(key="effort").options == [
         "Standard", "none", "minimal", "low", "medium", "high", "xhigh", "max"]
@@ -407,7 +408,7 @@ def test_switching_the_provider_in_the_sidebar_swaps_the_form(use_gemini, use_op
     at.radio(key="provider").set_value(PROVIDER_GEMINI)
     at.run()
     assert not at.exception and at.selectbox(key="think").value == "high" and at.radio(key="mode").value == MODE_BATCH
-    assert [t for t in at.text_input if t.label == "Modell"][0].value == "gemini-4-carbon"
+    assert model_field(at).value == "gemini-4-carbon"
 
 
 @ui
@@ -464,9 +465,9 @@ def test_the_default_model_is_shown_again_after_a_visit_to_openai_without_its_ke
     at.radio(key="provider").set_value(PROVIDER_GEMINI)
     at.run()
     assert not at.exception
-    model = at.text_input(key="model_gemini")
+    model = at.selectbox(key="model_gemini")
     sent_to_browser(model, "gemini-4-carbon")
-    assert model.proto.value == "gemini-4-carbon"  # nicht leer
+    assert model.proto.raw_value == "gemini-4-carbon"  # nicht leer
     assert at.number_input(key="max_batch").proto.value == 32768  # nicht der Mindestwert des Feldes
     sent_to_browser(at.selectbox(key="think"), "high")
 
@@ -477,7 +478,7 @@ def test_the_form_values_survive_a_visit_to_openai_without_its_key(use_gemini, m
     use_gemini()
     at = new_app()
     at.run()
-    at.text_input(key="model_gemini").set_value("mein-eigenes-modell")
+    type_model(at, "model_gemini", "mein-eigenes-modell")  # ein getippter Name, nicht aus der Liste
     at.selectbox(key="think").set_value("low")
     at.number_input(key="max_batch").set_value(4096)
     at.text_area(key="system").set_value("Sei kurz.")
@@ -487,12 +488,12 @@ def test_the_form_values_survive_a_visit_to_openai_without_its_key(use_gemini, m
     at.radio(key="provider").set_value(PROVIDER_GEMINI)
     at.run()
     assert not at.exception
-    for widget, expected in ((at.text_input(key="model_gemini"), "mein-eigenes-modell"),
+    for widget, expected in ((at.selectbox(key="model_gemini"), "mein-eigenes-modell"),
                              (at.selectbox(key="think"), "low"), (at.number_input(key="max_batch"), 4096),
                              (at.text_area(key="system"), "Sei kurz."), (at.text_area(key="raw"), "Erster Prompt"),
                              (at.radio(key="mode"), MODE_BATCH)):
         sent_to_browser(widget, expected)
-    assert at.text_input(key="model_gemini").proto.value == "mein-eigenes-modell"
+    assert at.selectbox(key="model_gemini").proto.raw_value == "mein-eigenes-modell"
     assert at.text_area(key="raw").proto.value == "Erster Prompt"
     assert at.number_input(key="max_batch").proto.value == 4096
 
@@ -503,13 +504,13 @@ def test_each_provider_keeps_its_own_settings_when_switching_back_and_forth(use_
     use_openai()
     at = new_app()
     at.run()
-    at.text_input(key="model_gemini").set_value("mein-eigenes-modell")
+    type_model(at, "model_gemini", "mein-eigenes-modell")
     at.selectbox(key="think").set_value("low")
     at.number_input(key="max_batch").set_value(4096)
     at.run()
     at.radio(key="provider").set_value(PROVIDER_OPENAI)
     at.run()
-    at.text_input(key="model_openai").set_value("gpt-6-luna")
+    at.selectbox(key="model_openai").set_value("gpt-6-luna")
     at.selectbox(key="effort").set_value("high")
     at.number_input(key="max_openai").set_value(65536)
     at.run()
@@ -517,13 +518,13 @@ def test_each_provider_keeps_its_own_settings_when_switching_back_and_forth(use_
         at.radio(key="provider").set_value(PROVIDER_GEMINI)
         at.run()
         assert not at.exception
-        sent_to_browser(at.text_input(key="model_gemini"), "mein-eigenes-modell")
+        sent_to_browser(at.selectbox(key="model_gemini"), "mein-eigenes-modell")
         sent_to_browser(at.selectbox(key="think"), "low")
         sent_to_browser(at.number_input(key="max_batch"), 4096)
         at.radio(key="provider").set_value(PROVIDER_OPENAI)
         at.run()
         assert not at.exception
-        sent_to_browser(at.text_input(key="model_openai"), "gpt-6-luna")
+        sent_to_browser(at.selectbox(key="model_openai"), "gpt-6-luna")
         sent_to_browser(at.selectbox(key="effort"), "high")
         sent_to_browser(at.number_input(key="max_openai"), 65536)
 
@@ -608,7 +609,7 @@ def test_the_model_field_decides_which_openai_model_is_used(use_openai, home):
     fake = use_openai()
     at = new_openai_app()
     at.run()
-    [t for t in at.text_input if t.label == "Modell"][0].set_value("gpt-6-luna")
+    model_field(at).set_value("gpt-6-luna")  # aus der Liste gewählt
     set_prompts(at, "Frage")
     click(at, "Batch starten")
     assert fake.batch_requests[0]["body"]["model"] == "gpt-6-luna" and read_history(home)[0]["model"] == "gpt-6-luna"
@@ -850,7 +851,7 @@ def test_reuse_inputs_of_an_openai_entry_switches_to_openai_and_restores_the_set
     at.run()
     assert not at.exception and at.session_state["view"] == TAB_NEW
     assert at.radio(key="provider").value == PROVIDER_OPENAI
-    assert [t for t in at.text_input if t.label == "Modell"][0].value == "gpt-6-luna"
+    assert model_field(at).value == "gpt-6-luna"
     assert at.selectbox(key="effort").value == "xhigh" and at.number_input(key="max_openai").value == 65536
     assert at.text_area(key="raw").value == "Eins" and at.text_area(key="system").value == "Kurz."
     assert not [r for r in at.radio if r.key == "mode"]
@@ -868,7 +869,7 @@ def test_reuse_inputs_of_a_gemini_entry_switches_back_to_gemini(use_openai, use_
     at.run()
     assert not at.exception and at.radio(key="provider").value == PROVIDER_GEMINI
     assert at.radio(key="mode").value == MODE_BATCH and at.selectbox(key="think").value == "medium"
-    assert [t for t in at.text_input if t.label == "Modell"][0].value == "gemini-anderes-modell"
+    assert model_field(at).value == "gemini-anderes-modell"
 
 
 @ui

@@ -1,5 +1,6 @@
 """Anzeige der Einträge und Ergebnisse. job_panel() läuft als Fragment (siehe Tab „Jobs und Ergebnisse“).
-show_costs() zeichnet die Infobox mit den Kosten des gewählten Modells in der Seitenleiste."""
+model_field() zeichnet das Feld „Modell“ der Seitenleiste, show_costs() darunter die Infobox mit den Kosten des
+gewählten Modells."""
 from datetime import datetime
 
 import streamlit as st
@@ -7,9 +8,28 @@ import streamlit as st
 from .config import BATCH_MAX_OUT, DONE, MAX_POLL_ERRORS, POLL_SECONDS, PROVIDER_GEMINI, TALK_NEW
 from .forms import continue_conversation
 from .naming import file_stem
-from .pricing import costs_caption, costs_help, costs_markdown, find_model
+from .pricing import costs_caption, costs_help, costs_markdown, default_model, find_model, model_choices
 from .providers import batch_info, cancel_batch, entry_mode, entry_provider, refresh
 from .talk import conversation_text, entry_group, history_turns, parse_conversation, short_prompt
+
+
+MODEL_HELP = "Die Liste nennt die aktuellen Modelle, das teuerste zuerst. Ein anderer Name lässt sich eintippen. "
+
+
+def model_field(provider, key, tooltip):
+    """Feld „Modell“ der Seitenleiste (Issue #11): eine Combobox mit den aktuellen Modellen des Anbieters, das teuerste
+    zuerst (pricing.model_choices) und zu Beginn vorausgewählt (pricing.default_model). Ein anderer Name lässt sich
+    eintippen, damit die Liste nützlich bleibt, wenn ein Modell erscheint, das die Tabelle noch nicht kennt. Der Wert
+    im Feld gehört immer zu den Optionen, auch ein eigener (etwa aus einem Eintrag im Verlauf): So bleibt er sichtbar
+    und wählbar. Das Feld lässt sich nicht leeren (required), ein leeres Modell wäre nur ein Fehler beim Start. Gibt
+    den Namen des gewählten Modells zurück. key ist der Schlüssel des Felds (er steht in FORM_KEYS), tooltip der Text
+    des Anbieters für das Fragezeichen am Feld, ihm geht MODEL_HELP voraus."""
+    choices = model_choices(provider)
+    st.session_state.setdefault(key, default_model(provider))
+    current = st.session_state[key]
+    options = choices + ([current] if current and current not in choices else [])
+    return st.selectbox("Modell", options, key=key, accept_new_options=True, required=True,
+                        help=MODEL_HELP + tooltip) or ""
 
 
 def show_costs(provider, model):
