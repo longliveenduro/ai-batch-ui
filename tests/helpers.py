@@ -145,6 +145,26 @@ def sent_to_browser(widget, expected):
     assert widget.proto.set_value is True, f"{widget.key}: Der Browser würde das Feld mit dem Standardwert aufbauen"
 
 
+def model_field(at):
+    """Das Feld „Modell“ der Seitenleiste (Issue #11): eine Combobox, es gibt nur die des gewählten Anbieters."""
+    found = [s for s in at.sidebar.selectbox if s.label == "Modell"]
+    assert len(found) == 1, f"Feld „Modell“ nicht gefunden. Vorhanden: {[s.label for s in at.sidebar.selectbox]}"
+    return found[0]
+
+
+def type_model(at, key, text):
+    """Tippt text in die Combobox „Modell“ mit dem Schlüssel key (model_gemini, model_openai oder model_claude) und
+    lässt die App laufen. Ein Wert, der nicht zu den Optionen gehört, ist ein Freitext. AppTest kennt ihn nicht: Es
+    rechnet den Zustand einer Selectbox mit der Position des Werts in den Optionen und wirft einen ValueError, wenn der
+    Wert fehlt (auch mit accept_new_options). Darum kommt der Text hier zu den Optionen des Test-Elements dazu. Der
+    Browser schickt ihn einfach als Wert, so geht er auch bei der App an."""
+    box = at.selectbox(key=key)
+    if text not in box.options:
+        box.options.append(text)
+    box.set_value(text)
+    at.run()
+
+
 def captions(at):
     return [c.value for c in at.caption]
 

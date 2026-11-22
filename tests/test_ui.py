@@ -8,7 +8,7 @@ from streamlit.testing.v1 import AppTest
 from fakes import ApiError, FakeDrive, FakeGemini, install, install_drive
 from helpers import (APP_PATH, MODE_BATCH, MODE_BG, PACKAGE, PACKAGE_DIR, PROVIDER_GEMINI, TAB_JOBS, TAB_NEW,
                      batch_entry, button, captions, click, finished_background, finished_batch, history_path, markdown,
-                     new_app, read_history, row, set_prompts, sync_entry, write_history)
+                     new_app, read_history, row, set_prompts, sync_entry, type_model, write_history)
 
 pytestmark = pytest.mark.ui
 
@@ -137,7 +137,7 @@ def test_the_model_field_decides_which_model_is_used(use_fake):
     fake = use_fake()
     at = new_app()
     at.run()
-    [t for t in at.text_input if t.label == "Modell"][0].set_value("gemini-anderes-modell")
+    type_model(at, "model_gemini", "gemini-anderes-modell")
     set_prompts(at, "Frage")
     click(at, "Batch starten")
     assert fake.created_batches[0][0] == "gemini-anderes-modell"
@@ -382,6 +382,7 @@ def test_files_in_the_project_folder_are_left_alone_on_start(use_fake, home):
     assert not at.toast
 
 
+@pytest.mark.real_date  # die Kopie des Pakets soll frisch importiert werden, nicht das vorab geladene Original
 def test_folders_are_created_beside_src_whatever_the_working_directory(tmp_path, monkeypatch, use_fake):
     project = tmp_path / "projekt"
     (project / "src").mkdir(parents=True)

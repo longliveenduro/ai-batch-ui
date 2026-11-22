@@ -6,8 +6,11 @@ Anbieter: Gemini (Batch und Hintergrund), OpenAI (nur Batch, Responses-Endpunkt)
           Batches API), gewählt in der Seitenleiste.
 Modi:     Batch (asynchron, 50 % Rabatt) oder Hintergrund (nur Gemini: Interactions API mit background=true, Long Decode
           bis 1.048.576 Ausgabe-Token, läuft bei Google und braucht die App nicht, Standardpreis).
+Modell:   Das Feld „Modell“ ist eine Combobox mit den aktuellen Modellen des Anbieters, das teuerste zuerst und
+          vorausgewählt. Ein anderer Name lässt sich eintippen.
 Kosten:   Unter dem Feld „Modell“ nennt eine Infobox die Preise des gewählten Modells je 1 Mio. Token (Batch, bei
-          Gemini auch Hintergrund). Die Preistabelle steht in aibui/pricing.py.
+          Gemini auch Hintergrund). Die Preistabelle, aus der auch die Liste der Modelle kommt, steht in
+          aibui/pricing.py.
 Ordner:   conf/ (Zugangsdaten, geheim: credentials.json, token.json) und data/ (batch_jobs.json = Verlauf und
           Ergebnisse, pdf_files.json, openai_files.json und claude_files.json = hochgeladene Dateien,
           requests_*.jsonl = gesendete Batch-Anfragen).
@@ -31,9 +34,8 @@ import streamlit as st
 from aibui.background import start_background
 from aibui.claude_batch import start_claude_batch, upload_file_claude
 from aibui.config import (BATCH_MAX_OUT, BG_DEFAULT_OUT, BG_MAX_OUT, CLAUDE_EFFORTS, CLAUDE_MAX_OUT,
-                          DEFAULT_CLAUDE_MODEL, DEFAULT_MODEL, DEFAULT_NAME_MODEL, DEFAULT_NAME_THINK,
-                          DEFAULT_OPENAI_MODEL, DONE, FORM_KEYS, HINT, MAX_POLL_ERRORS, MODE_BATCH, MODE_BG,
-                          NAME_SOURCE_CHARS, NAME_THINK_LEVELS, OPENAI_EFFORTS, OPENAI_MAX_OUT, POLL_SECONDS,
+                          DEFAULT_NAME_MODEL, DEFAULT_NAME_THINK, DONE, FORM_KEYS, HINT, MAX_POLL_ERRORS, MODE_BATCH,
+                          MODE_BG, NAME_SOURCE_CHARS, NAME_THINK_LEVELS, OPENAI_EFFORTS, OPENAI_MAX_OUT, POLL_SECONDS,
                           PROVIDER_CLAUDE, PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDERS, SEPARATOR, TABS, TALK_NEW,
                           THINK_LEVELS, prepare_folders)
 from aibui.drive import drive_fetch, drive_id, drive_service
@@ -45,7 +47,7 @@ from aibui.naming import choose_label, default_label, search_jobs
 from aibui.openai_batch import start_openai_batch, upload_file_openai
 from aibui.providers import batch_info, entry_mode, entry_provider, make_client
 from aibui.talk import entry_group, parse_conversation
-from aibui.views import job_panel, show_costs
+from aibui.views import job_panel, model_field, show_costs
 
 st.set_page_config(page_title="AI Batch UI", layout="wide")
 
@@ -61,19 +63,17 @@ with st.sidebar:
             PROVIDER_OPENAI: st.text_input("OpenAI API-Key", os.getenv("OPENAI_API_KEY", ""), type="password"),
             PROVIDER_CLAUDE: st.text_input("Claude API-Key", os.getenv("ANTHROPIC_API_KEY", ""), type="password")}
     if provider == PROVIDER_OPENAI:
-        st.session_state.setdefault("model_openai", DEFAULT_OPENAI_MODEL)
-        model = st.text_input("Modell", key="model_openai",
-                              help="Modellname laut OpenAI, zum Beispiel gpt-6-astra, gpt-6.1-sol oder gpt-6-luna. "
-                                   "Das Modell muss die Batch API und Dateieingaben (bei Bildern: Bildeingaben) unterstützen.")
+        model = model_field(provider, key="model_openai",
+                            tooltip="Das Modell muss die Batch API und Dateieingaben (bei Bildern: Bildeingaben) "
+                                    "unterstützen.")
     elif provider == PROVIDER_CLAUDE:
-        st.session_state.setdefault("model_claude", DEFAULT_CLAUDE_MODEL)
-        model = st.text_input("Modell", key="model_claude",
-                              help="Modellname laut Anthropic, zum Beispiel claude-sonnet-5-5, claude-opus-5-5, "
-                                   "claude-haiku-5-5 oder claude-fable-5-2. Das Modell muss die Message Batches API "
-                                   "und für die Denktiefe den Parameter effort kennen (die aktuellen Modelle tun es).")
+        model = model_field(provider, key="model_claude",
+                            tooltip="Das Modell muss die Message Batches API und für die Denktiefe den Parameter "
+                                    "effort kennen (die aktuellen Modelle tun es).")
     else:
-        st.session_state.setdefault("model_gemini", DEFAULT_MODEL)
-        model = st.text_input("Modell", key="model_gemini")
+        model = model_field(provider, key="model_gemini",
+                            tooltip="Die App ist auf die Gemini-4-Modelle zugeschnitten (Batch-Limit, Stufen der "
+                                    "Denktiefe, Caching).")
     show_costs(provider, model)
     with st.expander("Namen der Einträge"):
         st.session_state.setdefault("auto_name", True)
