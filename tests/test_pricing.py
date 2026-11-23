@@ -84,7 +84,8 @@ def test_find_model(pricing, provider, typed, expected):
 # ---------- Kosten ----------
 def test_a_claude_model_has_only_the_batch_price(pricing):
     costs = pricing.model_costs(PROVIDER_CLAUDE, "claude-sonnet-5-5", BEFORE)
-    assert costs == {"model": "claude-sonnet-5-5", "rows": [("Batch", D("1"), D("5"), D("0.05"))], "later": []}
+    assert costs == {"model": "claude-sonnet-5-5", "rows": [("Batch", D("1"), D("5"), D("0.05"))], "later": [],
+                     "custom": False}  # custom: die Preise stehen nicht in conf/prices.toml (Issue #39)
 
 
 def test_gemini_has_the_batch_and_the_background_price_and_announces_the_price_change(pricing):

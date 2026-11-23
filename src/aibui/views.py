@@ -6,9 +6,11 @@ from datetime import datetime
 import streamlit as st
 
 from .config import BATCH_MAX_OUT, DONE, MAX_POLL_ERRORS, POLL_SECONDS, PROVIDER_GEMINI, TALK_NEW
+from .costs import costs_note, no_price_text, row_cost_text, run_cost_text, run_costs
 from .forms import continue_conversation
 from .naming import file_stem
-from .pricing import costs_caption, costs_help, costs_markdown, default_model, find_model, model_choices
+from .pricing import (costs_caption, costs_help, costs_markdown, current_prices, default_model, model_choices,
+                      model_costs)
 from .providers import batch_info, cancel_batch, entry_mode, entry_provider, refresh
 from .talk import conversation_text, entry_group, history_turns, parse_conversation, short_prompt
 
@@ -34,12 +36,17 @@ def model_field(provider, key, tooltip):
 
 def show_costs(provider, model):
     """Infobox mit den Kosten des gewählten Modells (Seitenleiste, unter dem Feld „Modell“), darunter der Stand der
-    Preise. Ohne Modellnamen bleibt sie weg, bei einem Modell ohne Preis zeigt sie nur den Hinweis."""
+    Preise. Ohne Modellnamen bleibt sie weg, bei einem Modell ohne Preis zeigt sie nur den Hinweis. Fehler in der
+    Preisdatei conf/prices.toml (Issue #39) stehen darunter in einer Warnung, auch ohne Infobox."""
     text = costs_markdown(provider, model)
     if text:
         st.info(text)
-        if find_model(provider, model):
-            st.caption(costs_caption(), help=costs_help(provider))
+        costs = model_costs(provider, model)
+        if costs:
+            st.caption(costs_caption(costs["custom"]), help=costs_help(provider))
+    problems = current_prices().problems
+    if problems:
+        st.warning("\n".join(f"- {problem}" for problem in problems))
 
 
 def show_text(text):
@@ -100,6 +107,12 @@ def show_rows(j, rows):
         return
     tin, tc = sum(r["in"] for r in rows), sum(r["cached"] for r in rows)
     st.caption(f"Eingabe-Token gesamt: {tin:,}, davon aus dem Cache: {tc:,}" + (f" ({tc / tin:.0%})" if tin else ""))
+    provider, mode = entry_provider(j), entry_mode(j)
+    costs = run_costs(provider, mode, j.get("model"), j.get("created"), rows, j.get("api_model"))  # Issue #39
+    if costs:
+        st.caption(run_cost_text(costs, len(rows), len(j["prompts"])), help=costs_note(provider, mode, costs["custom"]))
+    else:
+        st.caption(no_price_text(j.get("model")))
     md = "\n\n".join(f"## {r['key']}\n\n**Prompt:** {r['prompt']}\n\n{r['text'] or r['error']}" for r in rows)
     st.download_button("Ergebnisse als Markdown", md, file_name=f"{file_stem(j['label'])}.md", key="dl:" + j["name"])
     for r in rows:
@@ -120,9 +133,11 @@ def show_rows(j, rows):
                                "ins Formular.")
             elif fin not in (None, "STOP", "unbekannt"):
                 st.warning(f"Die Antwort endete mit dem Grund „{fin}“ und ist möglicherweise unvollständig.")
+            cost = row_cost_text(costs, r["key"])
             st.caption(f"Modell {r.get('model', '?')}, Ende: {fin or '?'}, "
                        f"Eingabe {r['in']:,} (Cache {r['cached']:,}), "
                        f"Denken {r['think']:,}, Ausgabe {r['out']:,} Token"
+                       + (f", {cost}" if cost else "")
                        + (f", Dauer {r['secs']} s" if r.get("secs") is not None else ""))
             if r.get("usage"):
                 st.json(r["usage"], expanded=False)
