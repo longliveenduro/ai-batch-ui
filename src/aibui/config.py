@@ -27,6 +27,7 @@ CONF_DIR = BASE / "conf"  # Konfiguration und Zugangsdaten (geheim)
 DATA_DIR = BASE / "data"  # erzeugte Daten: Verlauf, Datei-Zuordnung, gesendete Batch-Anfragen
 CREDENTIALS_FILE = CONF_DIR / "credentials.json"
 TOKEN_FILE = CONF_DIR / "token.json"
+PRICES_FILE = CONF_DIR / "prices.toml"  # eigene Preise (optional, Issue #39): ändern oder ergänzen die Preistabelle
 HISTORY = DATA_DIR / "batch_jobs.json"
 FILES_DB = DATA_DIR / "pdf_files.json"  # Datei-Hash -> Name der Datei in der Gemini Files API (Name aus der Zeit der PDFs)
 OPENAI_FILES_DB = DATA_DIR / "openai_files.json"  # Datei-Hash -> ID der Datei in der OpenAI Files API
