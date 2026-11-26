@@ -383,7 +383,7 @@ def test_openai_shows_its_own_defaults_and_no_mode_switch(use_openai):
     at = new_openai_app()
     at.run()
     assert not at.exception and not at.error
-    assert model_field(at).value == "gpt-6-astra"
+    assert model_field(at).value == "gpt-6.2-astra"  # das beste Modell (Issue #45), nicht das teurere gpt-6-astra
     assert not [r for r in at.radio if r.key == "mode"]  # mit OpenAI gibt es nur Batch
     assert at.selectbox(key="effort").value == "Standard" and at.selectbox(key="effort").options == [
         "Standard", "none", "minimal", "low", "medium", "high", "xhigh", "max"]
@@ -579,12 +579,12 @@ def test_openai_batch_start_uploads_the_pdfs_and_stores_the_entry(use_openai, ho
     request = fake.batch_requests[0]
     assert (request["custom_id"], request["url"]) == ("prompt-1", "/v1/responses")
     body = request["body"]
-    assert body["model"] == "gpt-6-astra" and body["instructions"] == "Sei kurz."
+    assert body["model"] == "gpt-6.2-astra" and body["instructions"] == "Sei kurz."
     assert body["reasoning"] == {"effort": "high"} and body["max_output_tokens"] == 4096
     assert [p.get("file_id") or p["text"] for p in body["input"][0]["content"]] == ["file-pdf1", "file-pdf2", "Erster Prompt"]
     entry = read_history(home)[0]
     assert entry["provider"] == PROVIDER_OPENAI and entry["name"] == "batch_fake000001" and "state" not in entry
-    assert (entry["model"], entry["think"], entry["max_out"]) == ("gpt-6-astra", "high", 4096)
+    assert (entry["model"], entry["think"], entry["max_out"]) == ("gpt-6.2-astra", "high", 4096)
     assert entry["pdf"] == "Buch 1.pdf, Buch 2.pdf" and entry["system"] == "Sei kurz."
     assert entry["prompts"] == {"prompt-1": "Erster Prompt", "prompt-2": "Zweiter Prompt"}
     assert at.session_state["sel"] == app.entry_label(entry)

@@ -15,17 +15,19 @@ from .providers import batch_info, cancel_batch, entry_mode, entry_provider, ref
 from .talk import conversation_text, entry_group, history_turns, parse_conversation, short_prompt
 
 
-MODEL_HELP = "Die Liste nennt die aktuellen Modelle, das teuerste zuerst. Ein anderer Name lässt sich eintippen. "
+MODEL_HELP = ("Die Liste nennt die aktuellen Modelle, das teuerste zuerst. Vorausgewählt ist das beste Modell des "
+              "Anbieters (nicht unbedingt das teuerste). Ein anderer Name lässt sich eintippen. ")
 
 
 def model_field(provider, key, tooltip):
     """Feld „Modell“ der Seitenleiste (Issue #11): eine Combobox mit den aktuellen Modellen des Anbieters, das teuerste
-    zuerst (pricing.model_choices) und zu Beginn vorausgewählt (pricing.default_model). Ein anderer Name lässt sich
-    eintippen, damit die Liste nützlich bleibt, wenn ein Modell erscheint, das die Tabelle noch nicht kennt. Der Wert
-    im Feld gehört immer zu den Optionen, auch ein eigener (etwa aus einem Eintrag im Verlauf): So bleibt er sichtbar
-    und wählbar. Das Feld lässt sich nicht leeren (required), ein leeres Modell wäre nur ein Fehler beim Start. Gibt
-    den Namen des gewählten Modells zurück. key ist der Schlüssel des Felds (er steht in FORM_KEYS), tooltip der Text
-    des Anbieters für das Fragezeichen am Feld, ihm geht MODEL_HELP voraus."""
+    zuerst (pricing.model_choices). Zu Beginn ist das beste Modell des Anbieters vorausgewählt (pricing.default_model,
+    Issue #45), es steht nicht unbedingt vorn. Ein anderer Name lässt sich eintippen, damit die Liste nützlich bleibt,
+    wenn ein Modell erscheint, das die Tabelle noch nicht kennt. Der Wert im Feld gehört immer zu den Optionen, auch ein
+    eigener (etwa aus einem Eintrag im Verlauf): So bleibt er sichtbar und wählbar. Das Feld lässt sich nicht leeren
+    (required), ein leeres Modell wäre nur ein Fehler beim Start. Gibt den Namen des gewählten Modells zurück. key ist
+    der Schlüssel des Felds (er steht in FORM_KEYS), tooltip der Text des Anbieters für das Fragezeichen am Feld, ihm
+    geht MODEL_HELP voraus."""
     choices = model_choices(provider)
     st.session_state.setdefault(key, default_model(provider))
     current = st.session_state[key]

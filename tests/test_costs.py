@@ -368,7 +368,8 @@ def test_added_models_join_the_selection_sorted_by_price_and_may_exceed_the_limi
                      "gemini-4-hydrogen", "gemini-4-argon-pro"]
     assert len(names) > pricing.MAX_MODELS  # die Grenze gilt für PRICES, nicht für die Datei
     assert len(pricing.PRICES[PROVIDER_GEMINI]) <= pricing.MAX_MODELS
-    assert pricing.default_model(PROVIDER_GEMINI, BEFORE) == "gemini-4-radon"
+    # Radon ist das teuerste Modell und steht vorn, ändert aber die Voreinstellung nicht: Sie ist das beste Modell (#45)
+    assert pricing.default_model(PROVIDER_GEMINI, BEFORE) == "gemini-4-carbon" != names[0]
 
 
 def test_the_caption_says_where_own_prices_come_from(pricing):
@@ -737,8 +738,13 @@ def test_own_prices_change_the_costs_the_infobox_and_the_selection(use_all, home
     [total] = cost_captions(at)
     assert total.value.startswith("Geschätzte Kosten: 6,20 USD als Batch") and "12,40 USD" in total.value
     assert "Für dieses Modell gelten die Preise aus conf/prices.toml" in total.help
-    # das neue Modell ist das teuerste: ganz vorn und vorausgewählt, mit den Preisen aus der Datei in der Infobox
-    assert model_field(at).options[0] == "gemini-4-xenon" and model_field(at).value == "gemini-4-xenon"
+    # das neue Modell ist das teuerste und steht ganz vorn, vorausgewählt bleibt aber das beste Modell (Issue #45):
+    # Carbon, dessen Preise die Datei ebenfalls ändert. Wählt man Xenon, zeigt die Infobox seine Preise aus der Datei.
+    assert model_field(at).options[0] == "gemini-4-xenon" and model_field(at).value == "gemini-4-carbon"
+    assert "`gemini-4-carbon`" in box(at) and "| Batch | 5,00 | 10,00 | 0,50 |" in box(at)
+    model_field(at).set_value("gemini-4-xenon")
+    at.run()
+    assert not at.exception and not at.warning and not at.sidebar.warning
     text = box(at)
     assert "`gemini-4-xenon`" in text and "| Batch | 25,00 | 50,00 | 2,50 |" in text
     assert "| Hintergrund (Long Decode) | 50,00 | 100,00 | 5,00 |" in text

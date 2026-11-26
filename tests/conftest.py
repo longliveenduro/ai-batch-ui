@@ -82,8 +82,9 @@ def fresh_package(home):
 
 @pytest.fixture(autouse=True)
 def price_day(request, fresh_package, monkeypatch):
-    """Alle Tests rechnen die Preise mit demselben Tag PRICE_DAY. Sonst hinge das vorausgewählte Gemini-Modell vom
-    Datum des Laufs ab (pricing.model_choices(): bis 30.11.2026 ist Neon das teuerste Modell, danach Carbon). Das Modul
+    """Alle Tests rechnen die Preise mit demselben Tag PRICE_DAY. Sonst hingen die Reihenfolge der Modellliste und die
+    Preise in der Infobox vom Datum des Laufs ab (pricing.model_choices(): bis 30.11.2026 ist Neon das teuerste
+    Gemini-Modell, danach Carbon). Das vorausgewählte Modell hängt seit Issue #45 nicht mehr vom Tag ab. Das Modul
     pricing wird hier vorab importiert, damit das Hauptskript in den Oberflächentests dasselbe Modul mit dem festen Tag
     nutzt. Ein Test, der einen anderen Tag braucht, setzt ihn selbst (Fixture on_day). Ein Test, der die echte Uhr
     oder einen frischen Import von aibui braucht (etwa aus einer Kopie des Pakets), trägt den Marker real_date: Dann

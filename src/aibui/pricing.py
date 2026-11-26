@@ -1,10 +1,12 @@
 """Preise der Modelle (Issue #12): Preistabelle je Anbieter und Modell und die Kosten des gewählten Modells als Text für
-die Infobox in der Seitenleiste. Dieselbe Tabelle liefert die Auswahl im Feld „Modell“ (Issue #11). Ohne Streamlit.
+die Infobox in der Seitenleiste. Dieselbe Tabelle liefert die Auswahl im Feld „Modell“ (Issue #11), dazu nennt
+BEST_MODELS das vorausgewählte Modell (Issue #45). Ohne Streamlit.
 
 Die Anbieter nennen ihre Preise nicht über die API, darum stehen sie fest in PRICES (Stand: PRICES_AS_OF, Quellen in der
 README, Abschnitt 13). Ändert sich ein Preis oder kommt ein Modell dazu, wird nur diese Tabelle angepasst (README,
 Abschnitt 9.2). Aus demselben Grund kommt auch die Liste der Modelle aus der Tabelle und nicht aus der Modellliste der
-API: Die Modelllisten der Anbieter nennen keine Preise, eine Sortierung nach Kosten wäre damit nicht möglich.
+API: Die Modelllisten der Anbieter nennen keine Preise, eine Sortierung nach Kosten wäre damit nicht möglich. Auch
+welches Modell das beste ist, sagt keine der Listen (keine nennt eine Rangfolge): Das steht fest in BEST_MODELS.
 
 Eigene Preise (Issue #39): Die optionale Datei conf/prices.toml (PRICES_FILE) ändert Preise oder ergänzt Modelle, ohne
 dass der Quelltext angefasst wird (README, Abschnitt 6.6). Alle Funktionen dieses Moduls rechnen mit der geltenden
@@ -61,6 +63,17 @@ PRICES = {
         "claude-haiku-5-5": [(None, [(100_000, D("0.10"), D("0.50"), D("0.01")),
                                      (None, D("0.50"), D("2.50"), D("0.05"))])],
     },
+}
+# Das qualitativ beste Modell je Anbieter (Issue #45): Es ist im Feld „Modell“ vorausgewählt (default_model()). Das ist
+# nicht das teuerste: Die Liste ist nach Preis sortiert (Issue #11), und der Preis sagt nichts über die Qualität (bei
+# OpenAI kostet gpt-6-astra mehr als das bessere gpt-6.2-astra, bei Gemini 4 ist bis 30.11.2026 Neon teurer als Carbon).
+# Keine API nennt das beste Modell, es folgt der Selbstauskunft des Anbieters (README, Abschnitt 13). Jeder Anbieter in
+# PRICES braucht einen Eintrag, und das Modell muss in PRICES stehen (ein Test prüft beides). Kommt ein stärkeres
+# Modell, wird der Eintrag ausgetauscht (README, Abschnitt 9.2). Modelle aus conf/prices.toml ändern ihn nicht.
+BEST_MODELS = {
+    PROVIDER_GEMINI: "gemini-4-carbon",  # Googles Modell für die schwersten Projekte, Neon liegt darunter
+    PROVIDER_OPENAI: "gpt-6.2-astra",  # OpenAIs neues Frontier-Modell (laut OpenAI besser und billiger als gpt-6-astra)
+    PROVIDER_CLAUDE: "claude-fable-5-2",  # Anthropics fähigstes allgemein verfügbares Modell
 }
 
 
@@ -256,15 +269,21 @@ def model_choices(provider, on=None):
     zuerst, also nach dem Ausgabepreis (erste Stufe, kurze Prompts) am Tag on (Voreinstellung: heute). Bei gleichem
     Preis gilt die Reihenfolge der Tabelle. Weil sich Preise ändern, kann sich die Reihenfolge an einem Stichtag ändern
     (bei Gemini 4 am 01.12.2026). Modelle aus conf/prices.toml gehören dazu (MAX_MODELS gilt nur für PRICES). Ein
-    Anbieter ohne Eintrag ergibt eine leere Liste."""
+    Anbieter ohne Eintrag ergibt eine leere Liste. Vorausgewählt ist nicht unbedingt das erste: default_model()."""
     on = on or today()
     models = current_prices().table.get(provider, {})
     return sorted(models, key=lambda name: _current(models[name], on)[1][0][2], reverse=True)  # stabil bei Gleichstand
 
 
 def default_model(provider, on=None):
-    """Das vorausgewählte Modell des Anbieters: der erste Eintrag von model_choices(), also das teuerste."""
-    return model_choices(provider, on)[0]
+    """Das vorausgewählte Modell des Anbieters (Issue #45): sein bestes Modell aus BEST_MODELS, nicht das teuerste. Es
+    steht nicht unbedingt vorn in model_choices(), denn dort gilt der Preis (bei OpenAI das ältere gpt-6-astra vor dem
+    besseren gpt-6.2-astra, bei Gemini 4 bis 30.11.2026 Neon vor Carbon). Die Voreinstellung hängt deshalb nicht vom Tag
+    ab. Hat der Anbieter keinen Eintrag in BEST_MODELS, oder steht das Modell nicht in der Tabelle, gilt der erste
+    Eintrag der Liste. on wie bei model_choices(): Es bestimmt nur diesen Rückfall."""
+    choices = model_choices(provider, on)
+    best = BEST_MODELS.get(provider)
+    return best if best in choices else choices[0]
 
 
 def price_text(value):

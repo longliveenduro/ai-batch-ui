@@ -50,11 +50,11 @@ def test_the_price_table_is_well_formed(pricing):
 
 def test_every_model_the_list_offers_has_a_price(app):
     """Die Auswahl im Feld „Modell“ kommt aus der Tabelle (Issue #11): Zu jedem Modell darin gibt es also einen Preis,
-    am Tag der Tests wie vor und nach dem Preiswechsel. Auch die Voreinstellung (der erste Eintrag) hat einen."""
+    am Tag der Tests wie vor und nach dem Preiswechsel. Auch die Voreinstellung (Issue #45) hat einen."""
     for provider in app.PROVIDERS:
         for day in (BEFORE, CHANGE, app.PRICES_AS_OF):
             names = app.model_choices(provider, day)
-            assert names and app.default_model(provider, day) == names[0]
+            assert names and app.default_model(provider, day) in names
             for name in names:
                 assert app.find_model(provider, name) == name
                 assert app.model_costs(provider, name, day)["rows"]
@@ -257,9 +257,14 @@ def test_the_sidebar_shows_the_batch_costs_of_the_openai_model(use_all, on_day):
     at.run()
     assert not at.exception
     text = box(at)
-    assert "`gpt-6-astra`" in text and "Hintergrund" not in text
-    assert "| Batch, Prompt bis 272.000 Token | 5,00 | 25,00 | 0,50 |" in text
-    assert "| Batch, Prompt über 272.000 Token | 10,00 | 37,50 | 1,00 |" in text
+    assert "`gpt-6.2-astra`" in text and "Hintergrund" not in text  # vorausgewählt: das beste Modell (Issue #45)
+    assert "| Batch, Prompt bis 272.000 Token | 4,00 | 20,00 | 0,20 |" in text
+    assert "| Batch, Prompt über 272.000 Token | 8,00 | 30,00 | 0,40 |" in text
+    at.selectbox(key="model_openai").set_value("gpt-6-astra")  # das ältere und teurere Modell
+    at.run()
+    assert not at.exception and "`gpt-6-astra`" in box(at)
+    assert "| Batch, Prompt bis 272.000 Token | 5,00 | 25,00 | 0,50 |" in box(at)
+    assert "| Batch, Prompt über 272.000 Token | 10,00 | 37,50 | 1,00 |" in box(at)
     at.selectbox(key="model_openai").set_value("gpt-6-luna")
     at.run()
     assert not at.exception and "`gpt-6-luna`" in box(at)
