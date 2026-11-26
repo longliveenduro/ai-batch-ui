@@ -6,8 +6,9 @@ Anbieter: Gemini (Batch und Hintergrund), OpenAI (nur Batch, Responses-Endpunkt)
           Batches API), gewählt in der Seitenleiste.
 Modi:     Batch (asynchron, 50 % Rabatt) oder Hintergrund (nur Gemini: Interactions API mit background=true, Long Decode
           bis 1.048.576 Ausgabe-Token, läuft bei Google und braucht die App nicht, Standardpreis).
-Modell:   Das Feld „Modell“ ist eine Combobox mit den aktuellen Modellen des Anbieters, das teuerste zuerst und
-          vorausgewählt. Ein anderer Name lässt sich eintippen.
+Modell:   Das Feld „Modell“ ist eine Combobox mit den aktuellen Modellen des Anbieters, das teuerste zuerst. Das
+          beste Modell des Anbieters ist vorausgewählt (BEST_MODELS in aibui/pricing.py). Ein anderer Name lässt sich
+          eintippen.
 Kosten:   Unter dem Feld „Modell“ nennt eine Infobox die Preise des gewählten Modells je 1 Mio. Token (Batch, bei
           Gemini auch Hintergrund). Die Preistabelle, aus der auch die Liste der Modelle kommt, steht in
           aibui/pricing.py.

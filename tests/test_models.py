@@ -1,5 +1,5 @@
-"""Tests der Modell-Combobox (Issue #11): Die Liste der Modelle kommt aus der Preistabelle, das teuerste steht vorn und
-ist vorausgewählt, und ein anderer Name lässt sich eintippen.
+"""Tests der Modell-Combobox (Issue #11): Die Liste der Modelle kommt aus der Preistabelle, das teuerste steht vorn, und
+ein anderer Name lässt sich eintippen. Vorausgewählt ist das beste Modell des Anbieters (Issue #45), nicht das erste.
 
 Die Preise und die Reihenfolge in den Tests sind die der Preisseiten (Stand PRICES_AS_OF, Quellen in der README,
 Abschnitt 13). Ob sie heute noch stimmen, prüft kein Test.
@@ -18,6 +18,9 @@ BEFORE, CHANGE = date(2026, 11, 20), date(2026, 12, 1)  # Tag vor dem Preiswechs
 OPENAI_LIST = ["gpt-6-astra", "gpt-6.2-astra", "gpt-6.2-sol", "gpt-6.1-terra", "gpt-6-luna"]
 CLAUDE_LIST = ["claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]
 KEYS = {PROVIDER_GEMINI: "model_gemini", PROVIDER_OPENAI: "model_openai", PROVIDER_CLAUDE: "model_claude"}
+# Die besten Modelle laut Issue #45 (Stand 26.11.2026). Bewusst nicht aus pricing.BEST_MODELS gelesen: Der Test hält
+# fest, was das Issue verlangt. Eine Änderung der Konstante fällt so auf und gehört hier bewusst nachgezogen.
+BEST = {PROVIDER_GEMINI: "gemini-4-carbon", PROVIDER_OPENAI: "gpt-6.2-astra", PROVIDER_CLAUDE: "claude-fable-5-2"}
 
 
 # ---------- Liste und Voreinstellung (Logik) ----------
@@ -62,13 +65,35 @@ def test_the_list_follows_the_day_and_without_a_day_it_is_today(pricing, on_day)
     assert pricing.model_choices(PROVIDER_GEMINI)[0] == "gemini-4-carbon"
 
 
-def test_the_default_is_the_first_entry_of_the_list(pricing):
-    assert pricing.default_model(PROVIDER_GEMINI, BEFORE) == "gemini-4-neon"
-    assert pricing.default_model(PROVIDER_GEMINI, CHANGE) == "gemini-4-carbon"
-    assert pricing.default_model(PROVIDER_OPENAI, BEFORE) == "gpt-6-astra"  # wie bisher
-    assert pricing.default_model(PROVIDER_CLAUDE, BEFORE) == "claude-fable-5-2"  # bisher Sonnet 5.5, ein Viertel des Preises
-    for provider in pricing.PRICES:
-        assert pricing.default_model(provider, BEFORE) == pricing.model_choices(provider, BEFORE)[0]
+def test_the_default_is_the_best_model_of_the_provider_not_the_most_expensive_one(pricing):
+    """Issue #45: Vorausgewählt ist das qualitativ beste Modell. Die Liste bleibt nach Preis sortiert (Issue #11), das
+    beste steht deshalb nicht immer vorn: vor dem Preiswechsel ist Neon teurer als Carbon, und bei OpenAI kostet das
+    ältere gpt-6-astra mehr als das bessere gpt-6.2-astra. Das hängt nicht vom Tag ab."""
+    for day in (BEFORE, CHANGE, date(2027, 6, 1)):
+        for provider in pricing.PRICES:
+            assert pricing.default_model(provider, day) == BEST[provider], f"{provider} am {day}"
+    assert pricing.model_choices(PROVIDER_GEMINI, BEFORE)[0] == "gemini-4-neon"  # teurer als Carbon, nicht das beste
+    assert pricing.model_choices(PROVIDER_OPENAI, BEFORE)[0] == "gpt-6-astra"  # teurer als gpt-6.2-astra, aber älter
+    assert pricing.model_choices(PROVIDER_GEMINI, CHANGE)[0] == "gemini-4-carbon"  # hier fallen beide zusammen
+    assert pricing.model_choices(PROVIDER_CLAUDE, BEFORE)[0] == "claude-fable-5-2"
+
+
+def test_every_provider_has_a_best_model_and_the_price_table_knows_it(pricing):
+    assert set(pricing.BEST_MODELS) == set(pricing.PRICES)  # nichts fehlt, nichts kommt dazu
+    for provider, name in pricing.BEST_MODELS.items():
+        assert name in pricing.PRICES[provider], f"{provider}: {name} steht nicht in PRICES"
+        assert name in pricing.model_choices(provider, BEFORE), f"{provider}: {name} fehlt in der Liste"
+        assert pricing.model_costs(provider, name, BEFORE)["rows"], f"{provider}: {name} hat keinen Preis"
+
+
+def test_without_a_usable_best_model_the_default_is_the_first_entry_of_the_list(pricing, monkeypatch):
+    monkeypatch.setattr(pricing, "BEST_MODELS", {PROVIDER_OPENAI: "gpt-9-nova"})  # die Tabelle kennt das Modell nicht
+    assert pricing.default_model(PROVIDER_OPENAI, BEFORE) == "gpt-6-astra"
+    assert pricing.default_model(PROVIDER_GEMINI, BEFORE) == "gemini-4-neon"  # für Gemini gibt es keinen Eintrag
+    assert pricing.default_model(PROVIDER_GEMINI, CHANGE) == "gemini-4-carbon"  # der Rückfall folgt dem Tag
+    monkeypatch.setattr(pricing, "BEST_MODELS", {})
+    fallback = [pricing.default_model(provider, BEFORE) for provider in pricing.PRICES]
+    assert fallback == ["gemini-4-neon", "gpt-6-astra", "claude-fable-5-2"]
 
 
 def test_the_hint_for_an_unknown_model_names_the_known_ones_in_the_order_of_the_list(pricing):
@@ -81,12 +106,13 @@ def test_the_hint_for_an_unknown_model_names_the_known_ones_in_the_order_of_the_
 @pytest.mark.real_date
 def test_the_list_works_with_the_real_date(pricing):
     for provider in pricing.PRICES:
-        assert pricing.model_choices(provider) and pricing.default_model(provider) == pricing.model_choices(provider)[0]
+        assert pricing.model_choices(provider) and pricing.default_model(provider) in pricing.model_choices(provider)
+        assert pricing.default_model(provider) == BEST[provider]  # an keinem Tag ein anderes
 
 
 # ---------- Oberfläche: Liste und Voreinstellung ----------
 @ui
-def test_every_provider_offers_its_models_the_most_expensive_first_and_preselects_it(use_all, on_day, pricing):
+def test_every_provider_offers_its_models_the_most_expensive_first_and_preselects_the_best(use_all, on_day, pricing):
     on_day(BEFORE)
     at = new_app()
     at.run()
@@ -96,23 +122,27 @@ def test_every_provider_offers_its_models_the_most_expensive_first_and_preselect
         assert not at.exception, provider
         box = model_field(at)
         expected = pricing.model_choices(provider, BEFORE)
-        assert box.key == KEYS[provider] and box.options == expected and box.value == expected[0], provider
+        assert box.key == KEYS[provider] and box.options == expected, provider
+        assert box.value == BEST[provider], provider  # das beste Modell (Issue #45), nicht der erste Eintrag
+        # Gemini (Neon ist vor dem 01.12.2026 teurer als Carbon) und OpenAI (gpt-6-astra) haben ein teureres Modell vorn
+        assert (box.value == expected[0]) == (provider == PROVIDER_CLAUDE), provider
         assert box.proto.accept_new_options is True, "ohne das ließe sich kein anderer Name eintippen"
         assert box.proto.required is True, "das Feld lässt sich nicht leeren"
         assert "das teuerste zuerst" in box.help and "eintippen" in box.help
+        assert "Vorausgewählt ist das beste Modell" in box.help
 
 
 @ui
-def test_the_preselected_gemini_model_follows_the_day_for_a_new_session_only(use_all, on_day):
+def test_the_list_of_gemini_follows_the_day_but_the_preselected_model_does_not(use_all, on_day):
     on_day(BEFORE)
     at = new_app()
     at.run()
-    assert model_field(at).value == "gemini-4-neon"
+    assert model_field(at).value == "gemini-4-carbon" and model_field(at).options[0] == "gemini-4-neon"
     on_day(CHANGE)
-    at.run()  # dieselbe Sitzung: Sie behält ihre Wahl, nur die Liste folgt dem Tag
-    assert model_field(at).value == "gemini-4-neon" and model_field(at).options[0] == "gemini-4-carbon"
+    at.run()  # dieselbe Sitzung: Nur die Liste folgt dem Tag (jetzt steht Carbon vorn), die Wahl bleibt
+    assert model_field(at).value == "gemini-4-carbon" and model_field(at).options[0] == "gemini-4-carbon"
     fresh = new_app()
-    fresh.run()  # eine neue Sitzung wählt den ersten Eintrag der Liste von heute
+    fresh.run()  # eine neue Sitzung wählt dasselbe: Die Voreinstellung hängt nicht vom Tag ab (Issue #45)
     assert model_field(fresh).value == "gemini-4-carbon"
 
 
