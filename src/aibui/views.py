@@ -1,6 +1,6 @@
 """Anzeige der Einträge und Ergebnisse. job_panel() läuft als Fragment (siehe Tab „Jobs und Ergebnisse“).
 model_field() zeichnet das Feld „Modell“ der Seitenleiste, show_costs() darunter die Infobox mit den Kosten des
-gewählten Modells."""
+gewählten Modells, copy_button() das Symbol, das eine Antwort als Klartext in die Zwischenablage kopiert."""
 from datetime import datetime
 
 import streamlit as st
@@ -9,6 +9,7 @@ from .config import BATCH_MAX_OUT, DONE, MAX_POLL_ERRORS, POLL_SECONDS, PROVIDER
 from .costs import costs_note, no_price_text, row_cost_text, run_cost_text, run_costs
 from .forms import continue_conversation
 from .naming import file_stem
+from .plaintext import plain_text
 from .pricing import (costs_caption, costs_help, costs_markdown, current_prices, default_model, model_choices,
                       model_costs)
 from .providers import batch_info, cancel_batch, entry_mode, entry_provider, refresh
@@ -49,6 +50,83 @@ def show_costs(provider, model):
     problems = current_prices().problems
     if problems:
         st.warning("\n".join(f"- {problem}" for problem in problems))
+
+
+COPY_TITLE, COPY_DONE, COPY_FAILED = "Antwort als Text kopieren", "Kopiert", "Kopieren nicht möglich"
+COPY_HTML = f"""
+<button type="button" class="copy" title="{COPY_TITLE}" aria-label="{COPY_TITLE}"
+        data-title="{COPY_TITLE}" data-done="{COPY_DONE}" data-failed="{COPY_FAILED}">
+  <svg class="icon-copy" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1z
+             m3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2z
+             m0 16H8V7h11v14z"/>
+  </svg>
+  <svg class="icon-done" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+  </svg>
+</button>
+"""  # Symbole: Material Icons „content_copy“ und „check“ (Apache-Lizenz), wie sie Streamlit selbst zeigt
+COPY_CSS = """
+button.copy { all: unset; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;
+  width: 2rem; height: 2rem; border-radius: var(--st-button-radius, 0.5rem); cursor: pointer;
+  color: var(--st-text-color); opacity: .65; font-family: var(--st-font, sans-serif); }
+button.copy:hover { background: var(--st-secondary-background-color); opacity: 1; }
+button.copy:focus-visible { outline: 2px solid var(--st-primary-color); outline-offset: 1px; }
+svg { width: 1.1rem; height: 1.1rem; fill: currentColor; }
+.icon-done { display: none; color: var(--st-green-color, currentColor); }
+button.copy.done { opacity: 1; }
+button.copy.done .icon-copy { display: none; }
+button.copy.done .icon-done { display: inline; }
+"""
+COPY_JS = """
+export default function (component) {
+  const { data, parentElement } = component;
+  const button = parentElement.querySelector("button.copy");
+  let timer = null;
+
+  async function write(text) {
+    try {
+      await navigator.clipboard.writeText(text);  // nur Klartext, keine Formatierung
+      return true;
+    } catch (error) {  // etwa über http im Netzwerk: dort gibt es die Zwischenablage-API nicht
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+      document.body.appendChild(area);
+      area.select();
+      try { return document.execCommand("copy"); } catch (e) { return false; } finally { area.remove(); }
+    }
+  }
+
+  function say(text) {
+    button.title = text;
+    button.setAttribute("aria-label", text);
+  }
+
+  button.onclick = async () => {
+    const ok = await write(data.text);
+    button.classList.toggle("done", ok);
+    say(ok ? button.dataset.done : button.dataset.failed);
+    clearTimeout(timer);
+    timer = setTimeout(() => { button.classList.remove("done"); say(button.dataset.title); }, 2000);
+  };
+  return () => clearTimeout(timer);
+}
+"""
+
+
+@st.cache_resource
+def copy_component():
+    """Der Kopierknopf als Komponente (st.components.v2). Sie wird einmal angemeldet und nicht bei jedem Aufruf neu."""
+    return st.components.v2.component("aibui_copy_text", html=COPY_HTML, css=COPY_CSS, js=COPY_JS)
+
+
+def copy_button(text, key):
+    """Ein Symbol, das die Antwort als Klartext in die Zwischenablage kopiert (Issue #35): den Text, den man liest,
+    ohne Markdown-Zeichen (plain_text() in plaintext.py), nicht den Quelltext und ohne Formatierung. Der Text geht als
+    Daten an die Komponente, nie in deren HTML oder JavaScript: Die Antwort eines Modells ist keine vertrauenswürdige
+    Eingabe. key muss je Antwort verschieden sein."""
+    copy_component()(key=key, data={"text": plain_text(text)}, width="content")
 
 
 def show_text(text):
@@ -119,8 +197,12 @@ def show_rows(j, rows):
     st.download_button("Ergebnisse als Markdown", md, file_name=f"{file_stem(j['label'])}.md", key="dl:" + j["name"])
     for r in rows:
         with st.expander(f"{r['key']}: {short_prompt(r['prompt'])}", expanded=len(rows) <= 3):
-            if st.toggle("Prompt im Wortlaut", key=f"prompt:{j['name']}:{r['key']}",
-                         help="Zeigt den vollständigen Prompt, so wie er gesendet wurde."):
+            with st.container(horizontal=True, horizontal_alignment="distribute", vertical_alignment="center"):
+                show_full = st.toggle("Prompt im Wortlaut", key=f"prompt:{j['name']}:{r['key']}",
+                                      help="Zeigt den vollständigen Prompt, so wie er gesendet wurde.")
+                if r["text"]:
+                    copy_button(r["text"], key=f"copy:{j['name']}:{r['key']}")  # Symbol rechts oben (Issue #35)
+            if show_full:
                 show_prompt(r["prompt"])
             if r["text"]:
                 st.markdown(r["text"])
