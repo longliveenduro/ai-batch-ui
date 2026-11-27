@@ -173,6 +173,18 @@ def markdown(at):
     return [m.value for m in at.markdown]
 
 
+def copy_buttons(at):
+    """Die Kopierknöpfe der Antworten (Issue #35) als Liste ihrer Protokolle. Es sind Komponenten (st.components.v2), die
+    AppTest nur als UnknownElement vom Typ bidi_component kennt. Das Protokoll trägt ihren Schlüssel (id), ihre Daten
+    (json) und ihren Code (html_content, css_content, js_content)."""
+    return [c.proto for c in at.get("bidi_component")]
+
+
+def copy_texts(at):
+    """Was jeder Kopierknopf in die Zwischenablage legt: {Schlüssel: Text}. Der Schlüssel steht hinter der Kennung."""
+    return {proto.id.split("-", 2)[2]: json.loads(proto.json)["text"] for proto in copy_buttons(at)}
+
+
 def button(at, label):
     found = [b for b in at.button if b.label == label]
     assert found, f"Button „{label}“ nicht gefunden. Vorhanden: {[b.label for b in at.button]}"

@@ -16,6 +16,7 @@ Ein Modul importiert nur Module, die in dieser Liste über ihm stehen. So bleibt
     costs          Kosten eines Laufs: aus den Token der Ergebniszeilen und den Preisen geschätzt
     talk           Gesprächsverlauf als Text
     naming         Namen der Einträge: aus dem Prompt erzeugen, Standardname, Suche im Verlauf
+    plaintext      Antwort als Klartext zum Kopieren: Markdown ohne Markdown-Zeichen
     forms          Formular „Neue Anfrage“ und Verlaufseinträge (Callbacks)
     views          Anzeige der Einträge und Ergebnisse (läuft als Fragment)
 

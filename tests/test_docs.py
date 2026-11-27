@@ -49,8 +49,8 @@ def test_session_and_widget_keys_in_the_readme_exist_in_the_code():
 
 def test_requirement_versions_are_documented():
     requirements = (ROOT / "requirements.txt").read_text()
-    pinned = re.findall(r"^(streamlit|google-genai|openai|anthropic)(>=[0-9.]+)", requirements, flags=re.M)
-    assert len(pinned) == 4
+    pinned = re.findall(r"^(streamlit|google-genai|openai|anthropic|markdown-it-py)(>=[0-9.]+)", requirements, flags=re.M)
+    assert len(pinned) == 5
     for name, version in pinned:
         assert f"{name}{version}" in README, f"{name}{version} aus requirements.txt fehlt in der README"
 
