@@ -50,7 +50,7 @@ def test_defaults_in_batch_mode(use_fake):
     assert at.radio(key="mode").value == MODE_BATCH and at.selectbox(key="think").value == "high"
     assert at.number_input(key="max_batch").value == 32768 and at.number_input(key="max_batch").max == 32768
     assert not [n for n in at.number_input if n.key in ("group", "max_sync")]  # den synchronen Modus gibt es nicht mehr
-    assert button(at, "Batch starten").disabled  # ohne Prompts
+    assert not button(at, "Batch starten").disabled  # nur Dateien sperren den Start, nie der Prompt-Text (Issue #36)
     assert any("Keine Datei angehängt" in c and "Bilder" in c for c in captions(at))
 
 
@@ -66,6 +66,67 @@ def test_prompts_are_split_on_separator_lines(use_fake, text, expected):
     set_prompts(at, text)
     assert any(f"{expected} Prompt(s) erkannt" in c for c in captions(at))
     assert not button(at, "Batch starten").disabled
+
+
+# ---------- Start-Button (Issue #36) ----------
+# Streamlit überträgt den Text eines Textfelds erst beim Verlassen des Felds oder mit Strg+Enter. Ein Zustand des Buttons,
+# der am Prompt-Text hängt, liefe dem Tippen hinterher: grau trotz Text, rot trotz gelöschtem Text, und ein Klick auf
+# den grauen Button ginge je nach Timing durch oder verloren. Darum sperren nur Dateien den Start (siehe den Test zu den
+# Dateitypen unten), und der Klick prüft den Text. AppTest sieht die Verzögerung nicht, es zeigt nur den Zustand nach
+# jedem Lauf: Der Button darf deshalb auch ohne übernommenen Text nicht gesperrt sein.
+@pytest.mark.parametrize("text", ["", "   \n  ", "---", "---\n\n---", "Frage", "A\n---\nB"])
+def test_the_prompt_text_never_locks_the_start_button(use_fake, text):
+    use_fake()
+    at = new_app()
+    at.run()
+    set_prompts(at, text)
+    assert not button(at, "Batch starten").disabled
+
+
+@pytest.mark.parametrize("text", ["", "   \n  ", "---", "\n---\n\n---\n"])
+def test_a_click_without_a_prompt_says_so_and_starts_nothing(use_fake, home, text):
+    fake = use_fake()
+    at = new_app()
+    at.run()
+    set_prompts(at, text)
+    assert not at.error  # die Meldung kommt erst nach dem Klick
+    click(at, "Batch starten")
+    assert not at.exception and not at.success
+    assert len(at.error) == 1 and "Es fehlt noch ein Prompt" in at.error[0].value
+    assert fake.uploads == [] and fake.created_batches == [] and read_history(home) == []
+
+
+def test_a_click_with_nothing_under_the_marker_says_so_and_starts_nothing_until_the_new_prompt_is_there(
+        use_fake, home, app):
+    fake = use_fake()
+    at = new_app()
+    at.run()
+    history = app.conversation_text([("Frage", "Antwort")])  # endet mit der Marke: Der neue Prompt fehlt noch
+    set_prompts(at, "Erste Frage\n---\n" + history)  # der zweite Prompt ist unfertig
+    assert any(app.TALK_NEW in w.value for w in at.warning)
+    assert not button(at, "Batch starten").disabled and not at.error  # die Meldung kommt erst nach dem Klick
+    click(at, "Batch starten")
+    assert not at.exception and not at.success and len(at.error) == 1
+    assert app.TALK_NEW in at.error[0].value and "(Prompt 2)" in at.error[0].value
+    assert fake.uploads == [] and fake.created_batches == [] and read_history(home) == []
+    set_prompts(at, "Erste Frage\n---\n" + history + "Zweite Frage")  # jetzt steht dort Text
+    assert not [w for w in at.warning if app.TALK_NEW in w.value]
+    click(at, "Batch starten")
+    assert not at.error and "läuft" in at.success[0].value
+    sent = list(read_history(home)[0]["prompts"].values())
+    assert len(sent) == 2 and sent[0] == "Erste Frage" and sent[1].endswith("Zweite Frage")
+
+
+def test_text_and_click_arriving_in_one_run_start_with_the_new_text(use_fake, home):
+    """Im Browser kommen die Übernahme beim Verlassen des Felds und der Klick im selben Lauf an (geprüft in Chromium)."""
+    use_fake()
+    at = new_app()
+    at.run()
+    at.text_area(key="raw").set_value("Frage")
+    button(at, "Batch starten").click()
+    at.run()
+    assert not at.exception and not at.error and "läuft" in at.success[0].value
+    assert list(read_history(home)[0]["prompts"].values()) == ["Frage"]
 
 
 # ---------- Start im Batch-Modus ----------
@@ -602,7 +663,7 @@ def test_continuing_an_old_synchronous_conversation_fills_the_form_with_all_its_
     assert at.text_area(key="system").value == "Sei kurz."
     assert at.selectbox(key="think").value == "low" and at.number_input(key="max_bg").value == 4096
     # Der einmalige Hinweis (st.info) erscheint erst im echten Browser nach dem vollen Rerun, nicht im AppTest.
-    assert any(app.TALK_NEW in w.value for w in at.warning) and button(at, "Im Hintergrund starten").disabled
+    assert any(app.TALK_NEW in w.value for w in at.warning) and not button(at, "Im Hintergrund starten").disabled
     assert any("1 von 1 Prompt(s) setzen ein früheres Gespräch fort" in c for c in captions(at))
     set_prompts(at, at.text_area(key="raw").value + "Neuer Prompt")
     assert not [w for w in at.warning if app.TALK_NEW in w.value] and not button(at, "Im Hintergrund starten").disabled
@@ -617,7 +678,7 @@ def test_continuing_a_batch_answer_switches_to_batch_mode(use_fake, home):
     at.button(key=f"talk:{entry['name']}:prompt-1").click()
     at.run()
     assert at.radio(key="mode").value == MODE_BATCH and at.selectbox(key="think").value == "medium"
-    assert button(at, "Batch starten").disabled  # unter der Marke fehlt der neue Prompt
+    assert not button(at, "Batch starten").disabled  # unter der Marke fehlt der neue Prompt: erst der Klick meldet es
 
 
 def test_a_separator_line_in_an_answer_does_not_split_the_continued_prompt(use_fake, home):

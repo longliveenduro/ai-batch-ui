@@ -312,10 +312,22 @@ def test_defaults_in_background_mode(use_fake):
     background_mode(at)
     assert not at.exception
     assert at.number_input(key="max_bg").value == 262144 and at.number_input(key="max_bg").max == 1_048_576
-    assert button(at, "Im Hintergrund starten").disabled  # ohne Prompts
+    assert not button(at, "Im Hintergrund starten").disabled  # nur Dateien sperren den Start (Issue #36)
     assert any("Hintergrund-Interaktion" in c and "Standardpreis" in c for c in captions(at))
     name_field = at.text_input(key="label_background-gemini")  # leer: Der Name wird erzeugt (hier der Platzhalter dazu)
     assert name_field.value == "" and name_field.placeholder == "automatisch aus dem Prompt"
+
+
+@ui
+def test_background_start_without_a_prompt_says_so_and_starts_nothing(use_fake, home):
+    fake = use_fake()  # der Button ist nicht gesperrt (Issue #36): Der Klick prüft den Text
+    at = new_app()
+    at.run()
+    background_mode(at)
+    click(at, "Im Hintergrund starten")
+    assert not at.exception and not at.success
+    assert len(at.error) == 1 and "Es fehlt noch ein Prompt" in at.error[0].value
+    assert fake.uploads == [] and fake.interaction_requests == [] and read_history(home) == []
 
 
 @ui

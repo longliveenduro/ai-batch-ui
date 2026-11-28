@@ -623,7 +623,7 @@ def test_claude_shows_its_own_defaults_and_no_mode_switch(use_claude):
     assert not [n for n in at.number_input if n.key in ("max_batch", "max_bg", "max_openai")]
     assert any("Mit Claude läuft nur der Batch-Modus" in c and "innerhalb einer Stunde" in c
                and "„Hintergrund“ ist Gemini vorbehalten" in c for c in captions(at))
-    assert button(at, "Batch starten").disabled and not [b for b in at.button if b.label == "Im Hintergrund starten"]
+    assert not button(at, "Batch starten").disabled and not [b for b in at.button if b.label == "Im Hintergrund starten"]
     name_field = at.text_input(key="label_claude")  # ohne Namensvergabe zeigt der Platzhalter den Standardnamen
     assert name_field.value == "" and name_field.placeholder.startswith("claude-")
 
