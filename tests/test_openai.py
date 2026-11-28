@@ -390,7 +390,7 @@ def test_openai_shows_its_own_defaults_and_no_mode_switch(use_openai):
     assert at.number_input(key="max_openai").value == 32768 and at.number_input(key="max_openai").max == 128000
     assert not [s for s in at.selectbox if s.key == "think"]
     assert any("nur der Batch-Modus" in c and "„Hintergrund“ ist Gemini vorbehalten" in c for c in captions(at))
-    assert button(at, "Batch starten").disabled and not [b for b in at.button if b.label == "Im Hintergrund starten"]
+    assert not button(at, "Batch starten").disabled and not [b for b in at.button if b.label == "Im Hintergrund starten"]
     name_field = at.text_input(key="label_openai")  # ohne Namensvergabe zeigt der Platzhalter den Standardnamen
     assert name_field.value == "" and name_field.placeholder.startswith("openai-")
 

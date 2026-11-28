@@ -182,7 +182,7 @@ with tab_new:
                    "fort. Der Verlauf steht im Prompt und zählt bei jeder Anfrage als Eingabe.")
     if unfinished:
         st.warning(f"Unter „{TALK_NEW}“ fehlt noch dein neuer Prompt (Prompt {', '.join(map(str, unfinished))}). "
-                   "Der Start ist gesperrt, bis dort Text steht.")
+                   "Der Start klappt erst, wenn dort Text steht.")
     c1, c2, c3 = st.columns(3)
     if provider == PROVIDER_OPENAI:
         st.session_state.setdefault("effort", "Standard")
@@ -279,8 +279,17 @@ with tab_new:
             "Stelle, damit der Prefix identisch ist. Treffer siehst du unter „Jobs und Ergebnisse“."
         )
 
-    if st.button("Im Hintergrund starten" if bg else "Batch starten", type="primary",
-                 disabled=not prompts or bool(unfinished) or bool(problems)):
+    # Gesperrt wird nur, was sofort feststeht: die Dateien. Der Text im Feld „Prompts“ kommt erst beim Verlassen des Felds
+    # oder mit Strg+Enter beim Server an. Ein Zustand, der daran hängt, liefe dem Tippen hinterher: Der Button wäre grau,
+    # obwohl ein Aufruf möglich ist, und ein Klick darauf ginge je nach Timing durch oder verloren (Issue #36). Der Klick
+    # übernimmt den Text zuerst und prüft ihn dann hier.
+    start = st.button("Im Hintergrund starten" if bg else "Batch starten", type="primary", disabled=bool(problems))
+    if start and not prompts:
+        st.error("Nicht gestartet: Es fehlt noch ein Prompt. Trage ihn im Feld „Prompts“ ein.")
+    elif start and unfinished:
+        st.error(f"Nicht gestartet: Unter „{TALK_NEW}“ fehlt noch dein neuer Prompt "
+                 f"(Prompt {', '.join(map(str, unfinished))}).")
+    elif start:
         try:
             with st.status("Bereite Anfragen vor …" + HINT) as status:
                 files = [(f.name, f.getvalue()) for f in uploads]
